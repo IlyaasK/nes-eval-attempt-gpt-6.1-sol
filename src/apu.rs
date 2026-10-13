@@ -290,7 +290,7 @@ impl Apu {
             0x4017 => {
                 self.frame_mode = v;
                 if v & 64 != 0 { self.frame_irq = false }
-                self.reset_delay = if self.cycle & 1 == 0 { 3 } else { 4 }
+                self.reset_delay = if self.cycle & 1 == 0 { 4 } else { 3 }
             }
             _ => {}
         }
@@ -414,5 +414,30 @@ impl Apu {
         std::mem::swap(&mut self.drained, &mut self.audio);
         self.audio.clear();
         self.drained.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adjacent_frame_counter_writes_reset_to_the_same_irq_phase() {
+        for write_cycle in [16, 17] {
+            let mut apu = Apu::new();
+            while apu.cycle < write_cycle { apu.tick(); }
+            apu.write(0x4017, 0);
+            while apu.cycle < 29847 { apu.tick(); }
+            assert!(!apu.frame_irq);
+            // The three-cycle assertion window also reasserts an IRQ cleared
+            // by $4015 on either of its first two cycles.
+            for _ in 0..3 {
+                apu.tick();
+                assert_eq!(apu.status(0) & 64, 64);
+                assert!(!apu.frame_irq);
+            }
+            apu.tick();
+            assert_eq!(apu.status(0) & 64, 0);
+        }
     }
 }

@@ -523,10 +523,9 @@ impl Cpu {
                     self.read(old).await;
                     self.pc = self.pc.wrapping_add(delta as u16);
                     if (old ^ self.pc) & 0xff00 != 0 {
-                        let irq_before_fix = self.bus.borrow().last_irq;
                         self.read((old & 0xff00) | (self.pc & 255)).await;
                         let (irq, nmi) = branch_poll.unwrap();
-                        branch_poll = Some((irq || irq_before_fix, nmi));
+                        branch_poll = Some((irq || self.bus.borrow().last_irq, nmi));
                     }
                 }
             }
