@@ -229,6 +229,11 @@ impl Ppu {
             eprintln!("MASK {} {} {} {} {} {}", cycle, self.frame, self.scan,
                 self.dot, self.mask, val);
         }
+        #[cfg(feature="trace")]
+        if r == 0 || r == 5 || r == 6 {
+            eprintln!("PPU_WRITE {} {} {} {} {} {} {:04x} {} {}", cycle,
+                self.frame, self.scan, self.dot, r, val, self.v, self.x, self.w);
+        }
         match r {
             0 => {
                 self.ctrl = val;
@@ -382,7 +387,12 @@ impl Ppu {
         let mut spr = 0;
         let mut attr = 0;
         let mut idx = 255;
-        for s in &self.sprites[..self.count] {
+        // The reference latches the next line's sprite count for the final
+        // pixel, while its shift registers still contain the current line.
+        let visible_count = if x == 255 {
+            self.count.min(self.eval_pos / 4)
+        } else { self.count };
+        for s in &self.sprites[..visible_count] {
             if s.x == 0 {
                 let p =
                     ((s.lo & 128 != 0) as u8) |
@@ -391,6 +401,13 @@ impl Ppu {
             }
         }
         if !sp_on { spr = 0 }
+        #[cfg(feature="trace")]
+        if x == 255 && spr != 0 {
+            eprintln!("EDGE_PIXEL {} {} {} bg={} bp={} bg_color={} spr={} attr={} index={} sprite_color={}",
+                self.frame, self.scan, self.dot, bg, bp,
+                self.pal[if bg != 0 { bp as usize * 4 + bg as usize } else { 0 }],
+                spr, attr, idx, self.pal[16 + (attr as usize & 3) * 4 + spr as usize]);
+        }
         if bg != 0 && spr != 0 && idx == 0 && x != 255 { self.status |= 64 }
         let p =
             if spr != 0 && (bg == 0 || attr & 32 == 0) {
@@ -558,5 +575,37 @@ impl Ppu {
             self.count = self.next_count.min(8);
             if self.scan == 262 { self.scan = 0; self.frame += 1; }
         } else { self.dot += 1 }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn publishing_a_prepared_pixel_does_not_advance_sprite_zero_or_the_clock() {
+        let mut ppu = Ppu::new();
+        ppu.dot = 2;
+        ppu.mask = 0x1e;
+        ppu.lo = 0xffff;
+        ppu.pal[17] = 42;
+        ppu.count = 1;
+        ppu.sprites[0] = Sprite { x: 0, attr: 0, lo: 128, hi: 0, index: 0 };
+        let phase = (ppu.frame, ppu.scan, ppu.dot, ppu.ticks);
+        ppu.publish_next_pixel();
+        assert_eq!(ppu.fb[1], 42);
+        assert_eq!((ppu.frame, ppu.scan, ppu.dot, ppu.ticks), phase);
+        assert_eq!(ppu.status & 64, 0);
+        assert_eq!(ppu.sprites[0].lo, 128);
+        assert_eq!(ppu.lo, 0xffff);
+
+        let mut rom = vec![0; 16 + 16384];
+        rom[..4].copy_from_slice(b"NES\x1a");
+        rom[4] = 1;
+        let mut cart = Cart::load(&rom).unwrap();
+        ppu.tick(&mut cart);
+        assert_eq!(ppu.fb[1], 42);
+        assert_eq!(ppu.status & 64, 64);
+        assert_eq!(ppu.sprites[0].lo, 0);
     }
 }
