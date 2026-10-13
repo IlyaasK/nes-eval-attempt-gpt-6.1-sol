@@ -207,7 +207,10 @@ impl Bus {
     /// and leaves its future suspended until the bus is returned to it.
     fn execute(&mut self) -> bool {
         let op = self.request.expect("CPU bus request");
-        let next_cycle = self.cycles + 1;
+        // Timer/reader requests become visible in this clock before DMA
+        // arbitrates the CPU's queued bus operation.
+        self.tick();
+        let next_cycle = self.cycles;
         let get_cycle = next_cycle & 1 == 0;
         let cpu_read = matches!(op, CycleOp::Read(_));
         let was_halted = self.oam_active || self.dmc_active;
@@ -247,7 +250,6 @@ impl Bus {
                     DmaAction::OamPut(self.oam_latch)
                 } else { DmaAction::Hold }
             } else { DmaAction::Hold };
-            self.tick();
             match action {
                 DmaAction::Hold => { self.raw_read(self.dma_halt_addr); }
                 DmaAction::OamGet(a) => {
@@ -275,7 +277,6 @@ impl Bus {
             return false;
         }
         self.request = None;
-        self.tick();
         let value = match op {
             CycleOp::Read(a) => self.raw_read(a),
             CycleOp::Write(a, v) => { self.raw_write(a, v); 0 }
@@ -290,8 +291,9 @@ impl Bus {
         let dmc_needed = self.apu.dmc_need();
         self.apu.tick();
         if !dmc_needed && self.apu.dmc_need() && !self.dmc_active {
-            // Reload requests attempt to halt on the next PUT cycle.
-            self.dmc_pending_at = Some(self.cycles + if self.cycles & 1 == 0 { 1 } else { 2 });
+            // The reader requests RDY in the PUT phase which transfers the
+            // sample buffer to the output shifter, including this clock.
+            self.dmc_pending_at = Some(self.cycles + if self.cycles & 1 == 0 { 1 } else { 0 });
         }
         self.ppu.tick(&mut self.cart);
         if self.ppu.nmi_line && !self.nmi_sample { self.nmi = true }

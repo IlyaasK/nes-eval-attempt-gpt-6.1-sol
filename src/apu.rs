@@ -219,7 +219,7 @@ impl Apu {
             dmc_shift: 0,
             dmc_bits: 8,
             dmc_silent: true,
-            dmc_timer: 419,
+            dmc_timer: 422,
             dmc_out: 0,
             dmc_irq: false,
             frame_irq: false,
