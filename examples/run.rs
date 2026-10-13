@@ -47,5 +47,12 @@ fn main() {
         }
     }
     fs::write(format!("{out}/audio.raw"), audio).unwrap();
-    println!("frames={} cycles={} pc={:04x} status={} signature={:02x?} log={}",frames,n.bus.borrow().cycles,n.pc(),n.bus.borrow().cart.ram[0],&n.bus.borrow().cart.ram[1..4],String::from_utf8_lossy(&n.bus.borrow().cart.ram[4..1024]).split('\0').next().unwrap());
+    let bus = n.bus.borrow();
+    let ram = &bus.cart.ram;
+    let status = ram.first().copied().unwrap_or(0);
+    let signature = ram.get(1..4).unwrap_or(&[]);
+    let log = ram.get(4..ram.len().min(1024)).unwrap_or(&[]);
+    println!("frames={} cycles={} pc={:04x} status={} signature={:02x?} log={}",
+        frames, bus.cycles, n.pc(), status, signature,
+        String::from_utf8_lossy(log).split('\0').next().unwrap());
 }
