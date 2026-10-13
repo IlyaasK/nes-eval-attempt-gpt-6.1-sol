@@ -141,7 +141,11 @@ use std::{
     task::{Context, Poll, Waker},
 };
 #[derive(Clone,Copy)]
-enum CycleOp { Read(u16), Write(u16, u8), Oam(u8), }
+enum CycleOp { Read(u16), Write(u16, u8), }
+#[derive(Clone, Copy)]
+enum DmcDmaStage { Dummy, Get }
+#[derive(Clone, Copy)]
+enum DmaAction { Hold, OamGet(u16), OamPut(u8), DmcGet(u16) }
 pub struct Bus {
     pub cart: Cart,
     pub ppu: Ppu,
@@ -159,6 +163,13 @@ pub struct Bus {
     oam_active: bool,
     dmc_active: bool,
     last_dma_cycle: bool,
+    dma_halt_addr: u16,
+    oam_page: u8,
+    oam_index: u16,
+    oam_latch: u8,
+    oam_have_data: bool,
+    dmc_pending_at: Option<u64>,
+    dmc_stage: Option<DmcDmaStage>,
     request: Option<CycleOp>,
     result: Option<u8>,
 }
@@ -181,32 +192,107 @@ impl Bus {
             oam_active: false,
             dmc_active: false,
             last_dma_cycle: false,
+            dma_halt_addr: 0,
+            oam_page: 0,
+            oam_index: 0,
+            oam_latch: 0,
+            oam_have_data: false,
+            dmc_pending_at: None,
+            dmc_stage: None,
             request: None,
             result: None,
         }
     }
-    fn execute(&mut self) {
-        let op = self.request.take().expect("CPU bus request");
+    /// Advance one CPU clock. A DMA cycle retains the CPU's read request
+    /// and leaves its future suspended until the bus is returned to it.
+    fn execute(&mut self) -> bool {
+        let op = self.request.expect("CPU bus request");
+        let next_cycle = self.cycles + 1;
+        let get_cycle = next_cycle & 1 == 0;
+        let cpu_read = matches!(op, CycleOp::Read(_));
+        let was_halted = self.oam_active || self.dmc_active;
+        let mut oam_started = false;
+        let mut dmc_started = false;
+        if !self.apu.dmc_need() && !self.dmc_active {
+            self.dmc_pending_at = None;
+        }
+        if cpu_read {
+            if let Some(page) = self.dma.take() {
+                self.oam_active = true;
+                self.oam_page = page;
+                self.oam_index = 0;
+                self.oam_have_data = false;
+                oam_started = true;
+            }
+            if !self.dmc_active && self.dmc_pending_at.is_some_and(|t| t <= next_cycle) {
+                self.dmc_pending_at = None;
+                self.dmc_active = true;
+                self.dmc_stage = Some(DmcDmaStage::Dummy);
+                dmc_started = true;
+            }
+        }
+        if !was_halted && (oam_started || dmc_started) {
+            if let CycleOp::Read(a) = op { self.dma_halt_addr = a; }
+        }
         self.last_dma_cycle = self.oam_active || self.dmc_active;
-        self.tick();
-        let value =
-            match op {
-                CycleOp::Read(a) => self.raw_read(a),
-                CycleOp::Write(a, v) => { self.raw_write(a, v); 0 }
-                CycleOp::Oam(v) => {
+        if self.last_dma_cycle {
+            let dmc_get = !dmc_started && get_cycle &&
+                matches!(self.dmc_stage, Some(DmcDmaStage::Get));
+            let action = if dmc_get {
+                DmaAction::DmcGet(self.apu.dmc_addr)
+            } else if self.oam_active && !oam_started {
+                if get_cycle && !self.oam_have_data {
+                    DmaAction::OamGet((self.oam_page as u16) << 8 | self.oam_index)
+                } else if !get_cycle && self.oam_have_data {
+                    DmaAction::OamPut(self.oam_latch)
+                } else { DmaAction::Hold }
+            } else { DmaAction::Hold };
+            self.tick();
+            match action {
+                DmaAction::Hold => { self.raw_read(self.dma_halt_addr); }
+                DmaAction::OamGet(a) => {
+                    self.oam_latch = self.raw_read(a);
+                    self.oam_have_data = true;
+                }
+                DmaAction::OamPut(v) => {
                     let a = self.ppu.oam_addr;
                     self.ppu.oam[a as usize] = v;
                     self.ppu.oam_addr = a.wrapping_add(1);
-                    0
+                    self.oam_have_data = false;
+                    self.oam_index += 1;
+                    if self.oam_index == 256 { self.oam_active = false; }
                 }
-            };
+                DmaAction::DmcGet(a) => {
+                    let v = self.raw_read(a);
+                    self.apu.dmc_supply(v);
+                    self.dmc_active = false;
+                    self.dmc_stage = None;
+                }
+            }
+            if !dmc_started && matches!(self.dmc_stage, Some(DmcDmaStage::Dummy)) {
+                self.dmc_stage = Some(DmcDmaStage::Get);
+            }
+            return false;
+        }
+        self.request = None;
+        self.tick();
+        let value = match op {
+            CycleOp::Read(a) => self.raw_read(a),
+            CycleOp::Write(a, v) => { self.raw_write(a, v); 0 }
+        };
         self.result = Some(value);
+        true
     }
     fn tick(&mut self) {
         self.last_irq =
             self.cart.irq || self.apu.frame_irq || self.apu.dmc_irq;
         self.cycles += 1;
+        let dmc_needed = self.apu.dmc_need();
         self.apu.tick();
+        if !dmc_needed && self.apu.dmc_need() && !self.dmc_active {
+            // Reload requests attempt to halt on the next PUT cycle.
+            self.dmc_pending_at = Some(self.cycles + if self.cycles & 1 == 0 { 1 } else { 2 });
+        }
         self.ppu.tick(&mut self.cart);
         if self.ppu.nmi_line && !self.nmi_sample { self.nmi = true }
         self.nmi_sample = self.ppu.nmi_line;
@@ -252,7 +338,19 @@ impl Bus {
                 if v & 1 != 0 || self.strobe { self.shift = [self.keys, 0] }
                 self.strobe = v & 1 != 0
             }
-            0x4000..=0x4017 => self.apu.write(a, v),
+            0x4000..=0x4017 => {
+                let needed = self.apu.dmc_need();
+                self.apu.write(a, v);
+                if a == 0x4015 {
+                    if !self.apu.dmc_need() {
+                        self.dmc_pending_at = None;
+                    } else if !needed {
+                        // The first load halts on GET in the second following
+                        // APU cycle; later reloads use the PUT phase.
+                        self.dmc_pending_at = Some(self.cycles + if self.cycles & 1 == 0 { 4 } else { 3 });
+                    }
+                }
+            }
             0x4018..=0x401f => {}
             _ => self.cart.write(a, v, self.cycles),
         }
@@ -294,23 +392,7 @@ impl Cpu {
     async fn access(&mut self, op: CycleOp) -> u8 {
         Access { bus: self.bus.clone(), op }.await
     }
-    async fn dmc_dma(&mut self, a: u16) {
-        let need = self.bus.borrow().apu.dmc_need();
-        if need {
-            self.bus.borrow_mut().dmc_active = true;
-            self.access(CycleOp::Read(a)).await;
-            self.access(CycleOp::Read(a)).await;
-            if self.bus.borrow().cycles & 1 == 0 {
-                self.access(CycleOp::Read(a)).await;
-            }
-            let addr = self.bus.borrow().apu.dmc_addr;
-            let v = self.access(CycleOp::Read(addr)).await;
-            self.bus.borrow_mut().apu.dmc_supply(v);
-            self.bus.borrow_mut().dmc_active = false;
-        }
-    }
     async fn read(&mut self, a: u16) -> u8 {
-        self.dmc_dma(a).await;
         self.access(CycleOp::Read(a)).await
     }
     async fn write(&mut self, a: u16, v: u8) {
@@ -416,18 +498,6 @@ impl Cpu {
     async fn step(&mut self) {
         use Op::*;
         use Mode::*;
-        let dma = self.bus.borrow_mut().dma.take();
-        if let Some(page) = dma {
-            self.bus.borrow_mut().oam_active = true;
-            self.read(self.pc).await;
-            if self.bus.borrow().cycles & 1 == 0 { self.read(self.pc).await; }
-            for i in 0..256 {
-                let v = self.read((page as u16) << 8 | i).await;
-                self.access(CycleOp::Oam(v)).await;
-            }
-            self.bus.borrow_mut().oam_active = false;
-            return
-        }
         if self.jammed { self.read(self.pc).await; return }
         if self.nmi_pending {
             self.bus.borrow_mut().nmi = false;
@@ -720,7 +790,7 @@ impl Nes {
                 self.pending.as_mut().unwrap().as_mut().poll(&mut cx);
             assert!(result.is_pending());
         }
-        self.bus.borrow_mut().execute();
+        if !self.bus.borrow_mut().execute() { return }
         if let Poll::Ready(cpu) =
                 self.pending.as_mut().unwrap().as_mut().poll(&mut cx) {
             self.cpu = cpu;
