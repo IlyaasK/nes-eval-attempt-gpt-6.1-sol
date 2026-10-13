@@ -17,16 +17,19 @@ impl Pulse {
 struct Triangle {r:[u8;4],enable:bool,length:u8,period:u16,timer:u16,seq:u8,linear:u8,reload:bool}
 impl Triangle {fn quarter(&mut self){if self.reload{self.linear=self.r[0]&127}else if self.linear>0{self.linear-=1}if self.r[0]&128==0{self.reload=false}}fn output(&self)->u8{if self.seq<16{15-self.seq}else{self.seq-16}}fn timer(&mut self){if self.timer==0{self.timer=self.period;if self.length>0&&self.linear>0{self.seq=(self.seq+1)&31}}else{self.timer-=1}}fn write(&mut self,i:usize,v:u8){self.r[i]=v;match i{2=>self.period=(self.period&0x700)|v as u16,3=>{self.period=(self.period&255)|((v as u16&7)<<8);if self.enable{self.length=LEN[(v>>3) as usize]}self.reload=true},_=>{}}}}
 struct Noise {r:[u8;4],enable:bool,length:u8,timer:u16,shift:u16,env:Envelope}
-impl Default for Noise{fn default()->Self{Self{r:[0;4],enable:false,length:0,timer:0,shift:1,env:Envelope::default()}}}
-impl Noise{fn output(&self)->u8{if self.length>0&&self.shift&1==0{self.env.output(self.r[0])}else{0}}fn timer(&mut self){if self.timer==0{self.timer=NOISE[(self.r[2]&15) as usize]-1;let bit=(self.shift^(self.shift>>if self.r[2]&128!=0{6}else{1}))&1;self.shift=(self.shift>>1)|(bit<<14)}else{self.timer-=1}}fn write(&mut self,i:usize,v:u8){self.r[i]=v;if i==3{if self.enable{self.length=LEN[(v>>3) as usize]}self.env.start=true}}}
+impl Default for Noise{fn default()->Self{Self{r:[0;4],enable:false,length:0,timer:1,shift:0x4000,env:Envelope::default()}}}
+impl Noise{fn output(&self)->u8{if self.length>0&&self.shift&1==0{self.env.output(self.r[0])}else{0}}fn timer(&mut self){if self.timer==0{self.timer=NOISE[(self.r[2]&15) as usize];let bit=(self.shift^(self.shift>>if self.r[2]&128!=0{6}else{1}))&1;self.shift=(self.shift>>1)|(bit<<14)}else{self.timer-=1}}fn write(&mut self,i:usize,v:u8){self.r[i]=v;if i==3{if self.enable{self.length=LEN[(v>>3) as usize]}self.env.start=true}}}
 pub struct Apu {
  pulse:[Pulse;2],tri:Triangle,noise:Noise,dmc_r:[u8;4],pub dmc_addr:u16,pub dmc_left:u16,dmc_buffer:Option<u8>,dmc_shift:u8,dmc_bits:u8,dmc_silent:bool,dmc_timer:u16,dmc_out:u8,pub dmc_irq:bool,
  pub frame_irq:bool,frame_mode:u8,frame_cycle:u32,reset_delay:u8,cycle:u64,
- pub audio:Vec<i16>,pub drained:Vec<i16>,sample_phase:u64,sample_sum:f64,sample_count:u32,
- hp90_x:f64,hp90_y:f64,hp440_x:f64,hp440_y:f64,lp_y:f64,
+ pub audio:Vec<i16>,pub drained:Vec<i16>,resampler:crate::audio::Resampler,
+ #[cfg(feature="trace")] debug_last:f64,
+
 }
 impl Apu {
- pub fn new()->Self{Self{pulse:[Pulse::default(),Pulse::default()],tri:Triangle::default(),noise:Noise::default(),dmc_r:[0;4],dmc_addr:0xc000,dmc_left:0,dmc_buffer:None,dmc_shift:0,dmc_bits:8,dmc_silent:true,dmc_timer:427,dmc_out:0,dmc_irq:false,frame_irq:false,frame_mode:0,frame_cycle:8,reset_delay:0,cycle:8,audio:Vec::with_capacity(1500),drained:Vec::with_capacity(1500),sample_phase:0,sample_sum:0.0,sample_count:0,hp90_x:0.0,hp90_y:0.0,hp440_x:0.0,hp440_y:0.0,lp_y:0.0}}
+ pub fn new()->Self{Self{pulse:[Pulse::default(),Pulse::default()],tri:Triangle::default(),noise:Noise::default(),dmc_r:[0;4],dmc_addr:0xc000,dmc_left:0,dmc_buffer:None,dmc_shift:0,dmc_bits:8,dmc_silent:true,dmc_timer:427,dmc_out:0,dmc_irq:false,frame_irq:false,frame_mode:0,frame_cycle:8,reset_delay:0,cycle:8,audio:Vec::with_capacity(1500),drained:Vec::with_capacity(1500),resampler:crate::audio::Resampler::new(),#[cfg(feature="trace")] debug_last:-1.0}}
+
+ #[cfg(feature="trace")] pub fn debug_noise(&mut self,seed:u16,timer:u16){self.noise.shift=seed;self.noise.timer=timer}
  fn quarter(&mut self){for p in &mut self.pulse{p.env.clock(p.r[0])}self.noise.env.clock(self.noise.r[0]);self.tri.quarter()}
  fn half(&mut self){self.pulse[0].half(true);self.pulse[1].half(false);if self.tri.r[0]&128==0&&self.tri.length>0{self.tri.length-=1}if self.noise.r[0]&32==0&&self.noise.length>0{self.noise.length-=1}}
  pub fn write(&mut self,a:u16,v:u8){match a{0x4000..=0x4007=>self.pulse[((a-0x4000)/4) as usize].write((a&3) as usize,v),0x4008..=0x400b=>self.tri.write((a&3) as usize,v),0x400c..=0x400f=>self.noise.write((a&3) as usize,v),0x4010..=0x4013=>{self.dmc_r[(a&3) as usize]=v;if a==0x4010&&v&128==0{self.dmc_irq=false}if a==0x4011{self.dmc_out=v&127}},0x4015=>{for i in 0..2{self.pulse[i].enable=v&(1<<i)!=0;if !self.pulse[i].enable{self.pulse[i].length=0}}self.tri.enable=v&4!=0;if !self.tri.enable{self.tri.length=0}self.noise.enable=v&8!=0;if !self.noise.enable{self.noise.length=0}if v&16==0{self.dmc_left=0}else if self.dmc_left==0{self.dmc_restart()}self.dmc_irq=false},0x4017=>{self.frame_mode=v;if v&64!=0{self.frame_irq=false}self.reset_delay=if self.cycle&1==0{3}else{4}},_=>{}}}
@@ -36,13 +39,12 @@ impl Apu {
  pub fn status(&mut self,open:u8)->u8 {let v=((self.pulse[0].length>0) as u8)|(((self.pulse[1].length>0) as u8)<<1)|(((self.tri.length>0) as u8)<<2)|(((self.noise.length>0) as u8)<<3)|(((self.dmc_left>0) as u8)<<4)|(open&32)|((self.frame_irq as u8)<<6)|((self.dmc_irq as u8)<<7);self.frame_irq=false;v}
  pub fn tick(&mut self){self.cycle+=1;self.frame_cycle+=1;if self.reset_delay>0{self.reset_delay-=1;if self.reset_delay==0{self.frame_cycle=0;if self.frame_mode&128!=0{self.quarter();self.half()}}}
   match self.frame_cycle{7457|22371=>self.quarter(),14913=>{self.quarter();self.half()},29828..=29830=>if self.frame_mode&128==0{if self.frame_mode&64==0{self.frame_irq=true}if self.frame_cycle==29829{self.quarter();self.half()}if self.frame_cycle==29830{self.frame_cycle=0}},37281=>if self.frame_mode&128!=0{self.quarter();self.half()},37282=>if self.frame_mode&128!=0{self.frame_cycle=0},_=>{}}
-  self.tri.timer();self.noise.timer();if self.cycle&1==0{self.pulse[0].timer();self.pulse[1].timer()}
+  self.tri.timer();if self.cycle&1==0{self.noise.timer();self.pulse[0].timer();self.pulse[1].timer()}
   if self.dmc_timer==0{self.dmc_timer=DMC[(self.dmc_r[0]&15) as usize]-1;if !self.dmc_silent{if self.dmc_shift&1!=0{if self.dmc_out<=125{self.dmc_out+=2}}else if self.dmc_out>=2{self.dmc_out-=2}}self.dmc_shift>>=1;self.dmc_bits-=1;if self.dmc_bits==0{self.dmc_bits=8;if let Some(v)=self.dmc_buffer.take(){self.dmc_silent=false;self.dmc_shift=v}else{self.dmc_silent=true}}}else{self.dmc_timer-=1}
-  let p=self.pulse[0].output(true) as f64+self.pulse[1].output(false) as f64;let t=self.tri.output() as f64/8227.0+self.noise.output() as f64/12241.0+self.dmc_out as f64/22638.0;let out=if p>0.0{95.88/(8128.0/p+100.0)}else{0.0}+if t>0.0{159.79/(1.0/t+100.0)}else{0.0};
-  self.sample_sum+=out;self.sample_count+=1;self.sample_phase+=44100*12;
-  if self.sample_phase>=21477272 {self.sample_phase-=21477272;let x=self.sample_sum/self.sample_count as f64;self.sample_sum=0.0;self.sample_count=0;
-   let y=0.987258*(self.hp90_y+x-self.hp90_x);self.hp90_x=x;self.hp90_y=y;let z=0.939236*(self.hp440_y+y-self.hp440_x);self.hp440_x=y;self.hp440_y=z;self.lp_y+=0.666666*(z-self.lp_y);self.audio.push((self.lp_y*32767.0).clamp(-32767.0,32767.0) as i16);
-  }
+  let p=self.pulse[0].output(true) as f64+self.pulse[1].output(false) as f64;let t=3.0*self.tri.output() as f64+2.0*self.noise.output() as f64+self.dmc_out as f64;
+  let out=if p>0.0{95.52/(8128.0/p+100.0)}else{0.0}+if t>0.0{163.67/(24329.0/t+100.0)}else{0.0};
+  #[cfg(feature="trace")] if out!=self.debug_last{self.debug_last=out;eprintln!("MIX {} {} {} {} {} {}",self.cycle,self.pulse[0].output(true),self.pulse[1].output(false),self.tri.output(),self.noise.output(),self.dmc_out);}
+  if let Some(sample)=self.resampler.clock(out){self.audio.push(sample)}
  }
  pub fn drain(&mut self)->usize{std::mem::swap(&mut self.drained,&mut self.audio);self.audio.clear();self.drained.len()}
 }

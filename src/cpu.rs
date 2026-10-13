@@ -41,14 +41,14 @@ fn decode(code:u8)->(Op,Mode){use Op::*;use Mode::*;
  Rel,Izy,Imp,Izy,Zpx,Zpx,Zpx,Zpx,Imp,Aby,Imp,Aby,Abx,Abx,Abx,Abx];(O[code as usize],M[code as usize])}
 pub struct Nes {
  pub cart:Cart,pub ppu:Ppu,pub apu:Apu,pub ram:[u8;2048],pub a:u8,pub x:u8,pub y:u8,pub s:u8,pub p:u8,pub pc:u16,pub cycles:u64,
- open:u8,keys:u8,shift:[u8;2],strobe:bool,dma:Option<u8>,nmi:bool,irq_pending:bool,last_irq:bool,jammed:bool,nmi_sample:bool,nmi_pending:bool,last_nmi:bool,
+ open:u8,keys:u8,shift:[u8;2],strobe:bool,dma:Option<u8>,nmi:bool,irq_pending:bool,last_irq:bool,jammed:bool,nmi_sample:bool,nmi_pending:bool,last_nmi:bool,first_frame:bool,
 }
 impl Nes {
- pub fn new(cart:Cart)->Self{let pc=cart.read(0xfffc,0) as u16|((cart.read(0xfffd,0) as u16)<<8);Self{cart,ppu:Ppu::new(),apu:Apu::new(),ram:[0;2048],a:0,x:0,y:0,s:253,p:36,pc,cycles:8,open:0,keys:0,shift:[0;2],strobe:false,dma:None,nmi:false,irq_pending:false,last_irq:false,jammed:false,nmi_sample:false,nmi_pending:false,last_nmi:false}}
+ pub fn new(cart:Cart)->Self{let pc=cart.read(0xfffc,0) as u16|((cart.read(0xfffd,0) as u16)<<8);Self{cart,ppu:Ppu::new(),apu:Apu::new(),ram:[0;2048],a:0,x:0,y:0,s:253,p:36,pc,cycles:8,open:0,keys:0,shift:[0;2],strobe:false,dma:None,nmi:false,irq_pending:false,last_irq:false,jammed:false,nmi_sample:false,nmi_pending:false,last_nmi:false,first_frame:true}}
  pub fn set_keys(&mut self,k:u8){self.keys=k;if self.strobe{self.shift[0]=k}}
  fn tick(&mut self){self.last_nmi=self.nmi;self.last_irq=self.cart.irq||self.apu.frame_irq||self.apu.dmc_irq;self.cycles+=1;self.apu.tick();self.ppu.tick(&mut self.cart);if self.ppu.nmi_line&&!self.nmi_sample{self.nmi=true}self.nmi_sample=self.ppu.nmi_line;for _ in 0..2{self.ppu.tick(&mut self.cart)}self.ppu.nmi_edge=false}
  fn raw_read(&mut self,a:u16)->u8{let v=match a{0..=0x1fff=>self.ram[a as usize&2047],0x2000..=0x3fff=>self.ppu.read_reg(&mut self.cart,a),0x4015=>self.apu.status(self.open),0x4016|0x4017=>{let i=(a&1) as usize;let b=if self.strobe{if i==0{self.keys&1}else{0}}else{let b=self.shift[i]&1;self.shift[i]=(self.shift[i]>>1)|128;b};(self.open&224)|b},0x4000..=0x401f=>self.open,_=>self.cart.read(a,self.open)};self.open=v;v}
- fn raw_write(&mut self,a:u16,v:u8){self.open=v;match a{0..=0x1fff=>self.ram[a as usize&2047]=v,0x2000..=0x3fff=>self.ppu.write_reg(&mut self.cart,a,v,self.cycles),0x4014=>self.dma=Some(v),0x4016=>{if v&1!=0||self.strobe{self.shift=[self.keys,0]}self.strobe=v&1!=0},0x4000..=0x4017=>self.apu.write(a,v),0x4018..=0x401f=>{},_=>self.cart.write(a,v,self.cycles)}}
+ fn raw_write(&mut self,a:u16,v:u8){#[cfg(feature="trace")] if a==0x4011{eprintln!("DAC {} {}",self.cycles,v)}self.open=v;match a{0..=0x1fff=>self.ram[a as usize&2047]=v,0x2000..=0x3fff=>self.ppu.write_reg(&mut self.cart,a,v,self.cycles),0x4014=>self.dma=Some(v),0x4016=>{if v&1!=0||self.strobe{self.shift=[self.keys,0]}self.strobe=v&1!=0},0x4000..=0x4017=>self.apu.write(a,v),0x4018..=0x401f=>{},_=>self.cart.write(a,v,self.cycles)}}
  fn dmc_dma(&mut self,a:u16){if self.apu.dmc_need(){self.tick();self.raw_read(a);self.tick();self.raw_read(a);if self.cycles&1==0{self.tick();self.raw_read(a);}self.tick();let addr=self.apu.dmc_addr;let v=self.raw_read(addr);self.apu.dmc_supply(v)}}
  fn read(&mut self,a:u16)->u8{self.dmc_dma(a);self.tick();self.raw_read(a)}
  fn write(&mut self,a:u16,v:u8){self.tick();self.raw_write(a,v)}
@@ -87,5 +87,5 @@ impl Nes {
   let i=if matches!(op,CLI|SEI|PLP){old_i}else{self.p&I};let (irq,nmi)=branch_poll.unwrap_or((self.last_irq,self.last_nmi));self.irq_pending=irq&&i==0;self.nmi_pending=nmi;
  }
  fn modify(&mut self,op:Op,v:u8)->u8{use Op::*;let carry=self.p&C;let r=match op{ASL|SLO=>{self.flag(C,v&128!=0);v<<1},LSR|SRE=>{self.flag(C,v&1!=0);v>>1},ROL|RLA=>{self.flag(C,v&128!=0);(v<<1)|carry},ROR|RRA=>{self.flag(C,v&1!=0);(v>>1)|(carry<<7)},INC|ISC=>v.wrapping_add(1),DEC|DCP=>v.wrapping_sub(1),_=>v};match op{SLO=>{self.a|=r;self.nz(self.a)},SRE=>{self.a^=r;self.nz(self.a)},RLA=>{self.a&=r;self.nz(self.a)},RRA=>self.adc(r),DCP=>self.cmp(self.a,r),ISC=>self.adc(!r),_=>self.nz(r)}r}
- pub fn run_frame(&mut self){let frame=self.ppu.frame;while self.ppu.frame==frame{self.step()}}
+ pub fn run_frame(&mut self){if self.first_frame{self.first_frame=false;return}let frame=self.ppu.frame;while self.ppu.frame==frame{self.step()}}
 }

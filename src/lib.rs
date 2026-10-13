@@ -1,6 +1,7 @@
 pub mod cart;
 pub mod ppu;
 pub mod apu;
+pub mod audio;
 pub mod cpu;
 use cpu::Nes;
 use std::cell::UnsafeCell;

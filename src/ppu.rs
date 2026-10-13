@@ -55,6 +55,9 @@ impl Ppu {
    if d==256{self.inc_y()}if d==257{self.load_shift();self.v=(self.v&!0x41f)|(self.t&0x41f);self.next_count=if self.scan==261{0}else{self.eval_pos/4};self.next=[Sprite::default();8]}
    if self.scan==261&&(280..=304).contains(&d){self.v=(self.v&!0x7be0)|(self.t&0x7be0)}
    if (1..=256).contains(&d)&&self.scan<240{self.evaluate()}
+   if ((4..=256).contains(&d)||(324..=336).contains(&d))&&d&7==4{c.address(((self.ctrl as u16&16)<<8)+self.tile as u16*16+((self.v>>12)&7),self.ticks)}
+   if d==256||d==320{c.address(0x2000|(self.v&0xfff),self.ticks)}
+   if (260..=319).contains(&d)&&d&7==4{let i=((d-260)/8) as usize;c.address(self.sprite_address(i),self.ticks)}
    if (257..=320).contains(&d){self.oam_addr=0;let i=((d-257)/8) as usize;let p=(d-257)&7;match p{0|2=>{self.read_mem(c,0x2000|(self.v&0xfff));},4=>{let a=self.sprite_address(i);let lo=self.read_mem(c,a);self.next[i]=Sprite{x:self.secondary[i*4+3],attr:self.secondary[i*4+2],lo:if self.secondary[i*4+2]&64!=0{lo.reverse_bits()}else{lo},hi:0,index:self.indices[i]};},6=>{let a=self.sprite_address(i)+8;let hi=self.read_mem(c,a);self.next[i].hi=if self.next[i].attr&64!=0{hi.reverse_bits()}else{hi};},_=>{}}}
    if d==337{self.load_shift();self.read_mem(c,0x2000|(self.v&0xfff));}if d==339{self.read_mem(c,0x2000|(self.v&0xfff));}
   }
