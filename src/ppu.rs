@@ -517,6 +517,9 @@ impl Ppu {
         }
         if self.scan < 240 && (1..=256).contains(&d) { self.render_pixel() }
         self.ticks += 1;
+        // At power-on frame zero already has the odd-frame phase. The
+        // externally observed first run_frame is a no-op; do not use that
+        // call count to choose the hardware's skipped-dot phase.
         if self.scan == 261 && d == 339 && self.frame & 1 == 0 &&
                 self.skip_render {
             self.dot = 0;

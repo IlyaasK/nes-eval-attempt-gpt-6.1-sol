@@ -7,6 +7,7 @@ assumptions about its resampler. Reports transitions whose reference phase is
 covered by the requested offset range; inspect RMSE before trusting a match.
 """
 import argparse
+import hashlib
 import json
 import pathlib
 import subprocess
@@ -33,11 +34,16 @@ def read_wav(path):
 
 reference = read_wav(a.reference)
 candidates = []
+signature = dict(trace=hashlib.sha256(pathlib.Path(a.trace).read_bytes()).hexdigest(),
+                 frames=a.frames,
+                 builder=hashlib.sha256(pathlib.Path('tools/replay_noise.py').read_bytes()).hexdigest())
+cache_file = out / 'input.json'
+cache_valid = cache_file.exists() and json.loads(cache_file.read_text()) == signature
 offsets = list(range(-a.radius, a.radius + 1))
 for offset in offsets:
     rom = out / f'replay_{offset}.nes'
     wav = out / f'replay_{offset}.wav'
-    if not wav.exists():
+    if not cache_valid or not wav.exists():
         subprocess.run([sys.executable, 'tools/replay_noise.py', a.trace,
                         str(rom), '--registers', '4011,4017', '--offset',
                         str(offset)], check=True, stdout=subprocess.DEVNULL)
@@ -45,6 +51,7 @@ for offset in offsets:
                         '--dump-audio', str(wav)], check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     candidates.append(read_wav(wav))
+cache_file.write_text(json.dumps(signature, indent=2))
 
 last = 0
 results = []

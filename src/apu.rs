@@ -349,8 +349,10 @@ impl Apu {
             _ => {}
         }
         self.tri.timer();
-        if self.cycle & 1 != 0 { self.noise.timer(); }
-        if self.cycle & 1 == 0 {
+        // The fixed power-on alignment places the half-rate timer edge on
+        // odd numbered CPU cycles, independently of frame-counter resets.
+        if self.cycle & 1 != 0 {
+            self.noise.timer();
             self.pulse[0].timer();
             self.pulse[1].timer()
         }

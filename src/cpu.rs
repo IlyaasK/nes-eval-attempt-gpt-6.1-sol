@@ -155,7 +155,6 @@ pub struct Bus {
     dma: Option<u8>,
     nmi: bool,
     last_irq: bool,
-    last_nmi: bool,
     nmi_sample: bool,
     oam_active: bool,
     dmc_active: bool,
@@ -178,7 +177,6 @@ impl Bus {
             dma: None,
             nmi: false,
             last_irq: false,
-            last_nmi: false,
             nmi_sample: false,
             oam_active: false,
             dmc_active: false,
@@ -205,7 +203,6 @@ impl Bus {
         self.result = Some(value);
     }
     fn tick(&mut self) {
-        self.last_nmi = self.nmi;
         self.last_irq =
             self.cart.irq || self.apu.frame_irq || self.apu.dmc_irq;
         self.cycles += 1;
@@ -504,6 +501,9 @@ impl Cpu {
                 } else { self.a = v; self.nz(v) }
             }
             BPL | BMI | BVC | BVS | BCC | BCS | BNE | BEQ => {
+                // Branches poll IRQ before the operand fetch. NMI's edge
+                // latch is sampled with that fetch; page fixup adds an IRQ
+                // poll but does not add a second NMI poll in the reference.
                 let branch_irq = self.bus.borrow().last_irq;
                 let delta = self.fetch().await as i8;
                 branch_poll = Some((branch_irq, self.bus.borrow().nmi));
