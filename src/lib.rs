@@ -16,7 +16,7 @@ unsafe fn state()->&'static mut State {let s=&mut *STATE.0.get();if s.is_none(){
 #[no_mangle] pub extern "C" fn emu_reset()->i32{unsafe{let s=state();if let Some(c)=cart::Cart::load(&s.saved){s.nes=Some(Nes::new(c));1}else{0}}}
 #[no_mangle] pub extern "C" fn emu_set_keys(k:u32){unsafe{if let Some(n)=state().nes.as_mut(){n.set_keys(k as u8)}}}
 #[no_mangle] pub extern "C" fn emu_run_frame(){unsafe{if let Some(n)=state().nes.as_mut(){n.run_frame()}}}
-#[no_mangle] pub extern "C" fn emu_framebuffer()->*mut u16{unsafe{state().nes.as_mut().map_or(std::ptr::null_mut(),|n|n.ppu.fb.as_mut_ptr())}}
-#[no_mangle] pub extern "C" fn emu_audio_buffer()->*mut i16{unsafe{state().nes.as_mut().map_or(std::ptr::null_mut(),|n|n.apu.drained.as_mut_ptr())}}
-#[no_mangle] pub extern "C" fn emu_audio_samples()->i32{unsafe{state().nes.as_mut().map_or(0,|n|n.apu.drain() as i32)}}
+#[no_mangle] pub extern "C" fn emu_framebuffer()->*mut u16{unsafe{state().nes.as_mut().map_or(std::ptr::null_mut(),|n|n.bus.borrow_mut().ppu.fb.as_mut_ptr())}}
+#[no_mangle] pub extern "C" fn emu_audio_buffer()->*mut i16{unsafe{state().nes.as_mut().map_or(std::ptr::null_mut(),|n|n.bus.borrow_mut().apu.drained.as_mut_ptr())}}
+#[no_mangle] pub extern "C" fn emu_audio_samples()->i32{unsafe{state().nes.as_mut().map_or(0,|n|n.bus.borrow_mut().apu.drain() as i32)}}
 #[no_mangle] pub extern "C" fn emu_audio_rate()->i32{44100}

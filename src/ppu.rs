@@ -2,16 +2,16 @@ use crate::cart::Cart;
 #[derive(Clone,Copy,Default)]
 struct Sprite { x:u8, attr:u8, lo:u8, hi:u8, index:u8 }
 pub struct Ppu {
- pub fb:Vec<u16>, back:Vec<u16>, pub scan:u16,pub dot:u16,pub frame:u64,pub ticks:u64,
+ pub fb:Vec<u16>, pub scan:u16,pub dot:u16,pub frame:u64,pub ticks:u64,
  pub ctrl:u8,pub mask:u8,pub status:u8, pub oam:[u8;256],pub oam_addr:u8,
  nt:[u8;4096],pal:[u8;32],v:u16,t:u16,x:u8,w:bool,buf:u8,bus:u8,bus_time:[u64;8],
  lo:u16,hi:u16,atlo:u16,athi:u16,tile:u8,attr:u8,patlo:u8,pathi:u8,
  sprites:[Sprite;8],next:[Sprite;8],count:usize,next_count:usize,
- secondary:[u8;32],indices:[u8;8],eval_n:u8,eval_m:u8,eval_pos:usize,eval_latch:u8,eval_done:bool,
+ secondary:[u8;32],indices:[u8;8],eval_n:u8,eval_m:u8,eval_pos:usize,eval_latch:u8,eval_done:bool,overflow_left:u8,
  pub nmi_line:bool,pub nmi_edge:bool,suppress:bool,nmi_delay:u8,skip_render:bool,
 }
 impl Ppu {
- pub fn new()->Self {Self{fb:vec![0;61440],back:vec![0;61440],scan:0,dot:25,frame:0,ticks:25,ctrl:0,mask:0,status:0,oam:[0;256],oam_addr:0,nt:[0;4096],pal:[0;32],v:0,t:0,x:0,w:false,buf:0,bus:0,bus_time:[0;8],lo:0,hi:0,atlo:0,athi:0,tile:0,attr:0,patlo:0,pathi:0,sprites:[Sprite::default();8],next:[Sprite::default();8],count:0,next_count:0,secondary:[255;32],indices:[255;8],eval_n:0,eval_m:0,eval_pos:0,eval_latch:0,eval_done:false,nmi_line:false,nmi_edge:false,suppress:false,nmi_delay:0,skip_render:false}}
+ pub fn new()->Self {Self{fb:vec![0;61440],scan:0,dot:25,frame:0,ticks:25,ctrl:0,mask:0,status:0,oam:[0;256],oam_addr:0,nt:[0;4096],pal:[0;32],v:0,t:0,x:0,w:false,buf:0,bus:0,bus_time:[0;8],lo:0,hi:0,atlo:0,athi:0,tile:0,attr:0,patlo:0,pathi:0,sprites:[Sprite::default();8],next:[Sprite::default();8],count:0,next_count:0,secondary:[255;32],indices:[255;8],eval_n:0,eval_m:0,eval_pos:0,eval_latch:0,eval_done:false,overflow_left:0,nmi_line:false,nmi_edge:false,suppress:false,nmi_delay:0,skip_render:false}}
  fn update_nmi(&mut self){let line=self.status&128!=0&&self.ctrl&128!=0;if line&&!self.nmi_line{self.nmi_edge=true}if !line{self.nmi_delay=0;self.nmi_edge=false}self.nmi_line=line;}
  fn bus_set(&mut self,v:u8,mask:u8){self.bus=(self.bus&!mask)|(v&mask);for i in 0..8{if mask&(1<<i)!=0{self.bus_time[i]=self.ticks}}}
  fn bus_get(&mut self)->u8{for i in 0..8 {if self.ticks-self.bus_time[i]>3_000_000{self.bus&=!(1<<i)}}self.bus}
@@ -33,23 +33,24 @@ impl Ppu {
   5=>{if !self.w{self.x=val&7;self.t=(self.t&!31)|(val as u16>>3)}else{self.t=(self.t&!0x73e0)|((val as u16&7)<<12)|((val as u16&248)<<2)}self.w=!self.w},
   6=>{if !self.w{self.t=(self.t&255)|((val as u16&63)<<8)}else{self.t=(self.t&0x7f00)|val as u16;self.v=self.t;c.address(self.v&0x3fff,self.ticks)}self.w=!self.w},7=>{self.write_mem(c,self.v,val);self.inc_v(c)},_=>{}}}
  fn load_shift(&mut self){self.lo=(self.lo&0xff00)|self.patlo as u16;self.hi=(self.hi&0xff00)|self.pathi as u16;self.atlo=(self.atlo&0xff00)|if self.attr&1!=0{255}else{0};self.athi=(self.athi&0xff00)|if self.attr&2!=0{255}else{0}}
- fn evaluate(&mut self){let d=self.dot;if d==1{self.eval_pos=0;self.eval_n=self.oam_addr>>2;self.eval_m=0;self.eval_done=false;self.indices=[255;8];}if d<=64{if d&1==0{self.secondary[(d/2-1) as usize]=255}self.eval_latch=255;return}if d>256||self.eval_done{return}if d&1!=0{self.eval_latch=self.oam[(self.eval_n as usize*4+self.eval_m as usize)&255];return}
+ fn evaluate(&mut self){let d=self.dot;if d==1{self.eval_pos=0;self.eval_n=self.oam_addr>>2;self.eval_m=0;self.eval_done=false;self.overflow_left=0;self.indices=[255;8];}if d<=64{if d&1==0{self.secondary[(d/2-1) as usize]=255}self.eval_latch=255;return}if d>256||self.eval_done{return}if d&1!=0{self.eval_latch=self.oam[(self.eval_n as usize*4+self.eval_m as usize)&255];return}
   let height=if self.ctrl&32!=0{16}else{8};let y=if self.scan==261{255}else{self.scan as u8};let in_range=y>=self.eval_latch&&y-self.eval_latch<height;
   if self.eval_pos<32{if self.eval_m==0{if in_range{self.indices[self.eval_pos/4]=self.eval_n;self.secondary[self.eval_pos]=self.eval_latch;self.eval_pos+=1;self.eval_m=1}else{self.eval_n=self.eval_n.wrapping_add(1)}}else{self.secondary[self.eval_pos]=self.eval_latch;self.eval_pos+=1;self.eval_m+=1;if self.eval_m==4{self.eval_m=0;self.eval_n=self.eval_n.wrapping_add(1)}}}
-  else{if in_range{self.status|=32;self.eval_m=(self.eval_m+1)&3}self.eval_n=self.eval_n.wrapping_add(1)}if self.eval_n>=64{self.eval_n=0;self.eval_done=true}
+  else{if self.overflow_left>0{self.overflow_left-=1;self.eval_m+=1;if self.eval_m==4{self.eval_m=0;self.eval_n=self.eval_n.wrapping_add(1)}}else if in_range{self.status|=32;self.overflow_left=3;self.eval_m+=1;if self.eval_m==4{self.eval_m=0;self.eval_n=self.eval_n.wrapping_add(1)}}else{self.eval_m=(self.eval_m+1)&3;self.eval_n=self.eval_n.wrapping_add(1)}}if self.eval_n>=64{self.eval_n=0;self.eval_done=true}
  }
  fn sprite_address(&self,i:usize)->u16 {let y=self.secondary[i*4];let tile=self.secondary[i*4+1];let attr=self.secondary[i*4+2];let mut row=(if self.scan==261{255}else{self.scan as u8}).wrapping_sub(y);let tall=self.ctrl&32!=0;row&=if tall{15}else{7};if attr&128!=0{row^=if tall{15}else{7}}if tall{((tile as u16&1)<<12)+((tile as u16&254)*16)+((row as u16&8)<<1)+(row as u16&7)}else{((self.ctrl as u16&8)<<9)+tile as u16*16+row as u16}}
- fn render_pixel(&mut self){let x=(self.dot-1) as usize;let bg_on=self.mask&8!=0&&(x>=8||self.mask&2!=0);let sp_on=self.mask&16!=0&&(x>=8||self.mask&4!=0);let bit=0x8000>>self.x;let bg=if bg_on{((self.lo&bit!=0) as u8)|(((self.hi&bit!=0) as u8)<<1)}else{0};let bp=((self.atlo&bit!=0) as u8)|(((self.athi&bit!=0) as u8)<<1);let mut spr=0;let mut attr=0;let mut idx=255;
+ fn render_pixel(&mut self){#[cfg(feature="trace")] if self.scan==0&&self.dot<=16&&self.frame<6{eprintln!("PIX {} {} {:04x} {:02x} {:02x?}",self.frame,self.dot,self.v,self.mask,&self.pal[..16]);}let x=(self.dot-1) as usize;let bg_on=self.mask&8!=0&&(x>=8||self.mask&2!=0);let sp_on=self.mask&16!=0&&(x>=8||self.mask&4!=0);let bit=0x8000>>self.x;let bg=if bg_on{((self.lo&bit!=0) as u8)|(((self.hi&bit!=0) as u8)<<1)}else{0};let bp=((self.atlo&bit!=0) as u8)|(((self.athi&bit!=0) as u8)<<1);let mut spr=0;let mut attr=0;let mut idx=255;
   for s in &self.sprites[..self.count]{if s.x==0{let p=((s.lo&128!=0) as u8)|(((s.hi&128!=0) as u8)<<1);if p!=0{spr=p;attr=s.attr;idx=s.index;break}}}
   if !sp_on{spr=0}if bg!=0&&spr!=0&&idx==0&&x!=255{self.status|=64}
   let p=if spr!=0&&(bg==0||attr&32==0){16+(attr as usize&3)*4+spr as usize}else if bg!=0{bp as usize*4+bg as usize}else{0};
-  let mut color=if !self.rendering()&&self.v&0x3f00==0x3f00{self.pal[Self::pi(self.v)]}else{self.pal[p]};if self.mask&1!=0{color&=48}self.back[self.scan as usize*256+x]=color as u16|((self.mask as u16&224)<<1);
+  let mut color=if !self.rendering()&&self.v&0x3f00==0x3f00{self.pal[Self::pi(self.v)]}else{self.pal[p]};if self.mask&1!=0{color&=48}self.fb[self.scan as usize*256+x]=color as u16|((self.mask as u16&224)<<1);
   if self.rendering(){for s in &mut self.sprites[..self.count]{if s.x>0{s.x-=1}else{s.lo<<=1;s.hi<<=1}}}
  }
  pub fn tick(&mut self,c:&mut Cart){let d=self.dot;if self.nmi_delay>0{self.nmi_delay-=1;if self.nmi_delay==0&&self.nmi_line{self.nmi_edge=true}}if self.scan==261&&d==338{self.skip_render=self.rendering()}let line=self.scan<240||self.scan==261;
   if self.scan==241&&d==1{if !self.suppress{self.status|=128}self.suppress=false;self.update_nmi()}
   if self.scan==261&&d==1{self.status&=31;self.update_nmi()}
   if self.rendering()&&line{
+   if d==0&&self.scan<240{c.address(((self.ctrl as u16&16)<<8)+self.tile as u16*16+((self.v>>12)&7),self.ticks)}
    if (2..=257).contains(&d)||(322..=337).contains(&d){self.lo<<=1;self.hi<<=1;self.atlo<<=1;self.athi<<=1}
    if (1..=256).contains(&d)||(321..=336).contains(&d){match (d-1)&7{0=>{self.load_shift();self.tile=self.read_mem(c,0x2000|(self.v&0xfff))},2=>{let a=0x23c0|(self.v&0xc00)|((self.v>>4)&0x38)|((self.v>>2)&7);let v=self.read_mem(c,a);self.attr=(v>>(((self.v>>4)&4)|(self.v&2)))&3},4=>self.patlo=self.read_mem(c,((self.ctrl as u16&16)<<8)+self.tile as u16*16+((self.v>>12)&7)),6=>self.pathi=self.read_mem(c,((self.ctrl as u16&16)<<8)+self.tile as u16*16+((self.v>>12)&7)+8),7=>self.inc_x(),_=>{}}}
    if d==256{self.inc_y()}if d==257{self.load_shift();self.v=(self.v&!0x41f)|(self.t&0x41f);self.next_count=if self.scan==261{0}else{self.eval_pos/4};self.next=[Sprite::default();8]}
@@ -63,8 +64,8 @@ impl Ppu {
   }
   if self.scan<240&&(1..=256).contains(&d){self.render_pixel()}
   self.ticks+=1;
-  if self.scan==261&&d==339&&self.frame&1!=0&&self.skip_render{self.dot=0;self.scan=0;self.frame+=1;std::mem::swap(&mut self.fb,&mut self.back);self.sprites=self.next;self.count=self.next_count.min(8);}
-  else if d==340{self.dot=0;self.scan+=1;self.sprites=self.next;self.count=self.next_count.min(8);if self.scan==262{self.scan=0;self.frame+=1;std::mem::swap(&mut self.fb,&mut self.back);}}
+  if self.scan==261&&d==339&&self.frame&1!=0&&self.skip_render{self.dot=0;self.scan=0;self.frame+=1;self.sprites=self.next;self.count=self.next_count.min(8);}
+  else if d==340{self.dot=0;self.scan+=1;self.sprites=self.next;self.count=self.next_count.min(8);if self.scan==262{self.scan=0;self.frame+=1;}}
   else{self.dot+=1}
  }
 }
