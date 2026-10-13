@@ -504,10 +504,9 @@ impl Cpu {
                 } else { self.a = v; self.nz(v) }
             }
             BPL | BMI | BVC | BVS | BCC | BCS | BNE | BEQ => {
+                let branch_irq = self.bus.borrow().last_irq;
                 let delta = self.fetch().await as i8;
-                branch_poll =
-                    Some((self.bus.borrow().last_irq,
-                            self.bus.borrow().last_nmi));
+                branch_poll = Some((branch_irq, self.bus.borrow().nmi));
                 let take =
                     match op {
                         BPL => self.p & N == 0,
@@ -524,11 +523,10 @@ impl Cpu {
                     self.read(old).await;
                     self.pc = self.pc.wrapping_add(delta as u16);
                     if (old ^ self.pc) & 0xff00 != 0 {
+                        let irq_before_fix = self.bus.borrow().last_irq;
                         self.read((old & 0xff00) | (self.pc & 255)).await;
                         let (irq, nmi) = branch_poll.unwrap();
-                        branch_poll =
-                            Some((irq || self.bus.borrow().last_irq,
-                                    nmi || self.bus.borrow().last_nmi));
+                        branch_poll = Some((irq || irq_before_fix, nmi));
                     }
                 }
             }
@@ -642,11 +640,11 @@ impl Cpu {
             }
         }
         let i = if matches!(op,CLI|SEI|PLP) { old_i } else { self.p & I };
-        let (irq, _nmi) =
+        let (irq, nmi) =
             branch_poll.unwrap_or((self.bus.borrow().last_irq,
                     self.bus.borrow().nmi));
         self.irq_pending = irq && i == 0;
-        self.nmi_pending = self.bus.borrow().nmi;
+        self.nmi_pending = nmi;
     }
     fn modify(&mut self, op: Op, v: u8) -> u8 {
         use Op::*;
@@ -785,5 +783,68 @@ mod unofficial_tests {
         nes.run_frame();
         assert_eq!(nes.bus.borrow().ram[0x100],1);
         assert_eq!(nes.bus.borrow().cart.ram[0x100],0);
+    }
+}
+
+#[cfg(test)]
+mod dma_timing_tests {
+    use super::*;
+
+    #[test]
+    fn oam_dma_gets_have_even_parity_and_stall_for_513_or_514_cycles() {
+        for (prefix, expected_stall) in [(vec![], 513), (vec![0x24, 0], 514)] {
+            let mut rom = vec![0; 16 + 32768];
+            rom[..4].copy_from_slice(b"NES\x1a");
+            rom[4] = 2;
+            let mut code = prefix;
+            code.extend_from_slice(&[0xa9, 2, 0x8d, 0x14, 0x40, 0x02]);
+            rom[16..16 + code.len()].copy_from_slice(&code);
+            rom[16 + 32764..16 + 32766].copy_from_slice(&0x8000u16.to_le_bytes());
+            let mut nes = Nes::new(Cart::load(&rom).unwrap());
+            for i in 0..256 { nes.bus.borrow_mut().ram[512 + i] = i as u8; }
+            while nes.bus.borrow().dma.is_none() { nes.clock(); }
+            let start = nes.bus.borrow().cycles;
+            nes.clock();
+            let mut writes = 0;
+            while nes.bus.borrow().oam_active {
+                let address = nes.bus.borrow().ppu.oam_addr;
+                nes.clock();
+                let bus = nes.bus.borrow();
+                if bus.ppu.oam_addr != address {
+                    // Each PUT follows an even GET, so the PUT is odd.
+                    assert_eq!(bus.cycles & 1, 1);
+                    writes += 1;
+                }
+            }
+            assert_eq!(writes, 256);
+            let bus = nes.bus.borrow();
+            assert_eq!(bus.cycles - start, expected_stall);
+            for i in 0..256 { assert_eq!(bus.ppu.oam[i], i as u8); }
+        }
+    }
+}
+
+#[cfg(test)]
+mod branch_interrupt_tests {
+    use super::*;
+
+    #[test]
+    fn nmi_during_the_last_taken_branch_cycle_waits_for_the_next_instruction() {
+        for (address, branch_cycles) in [(0x8000u16, 3), (0x80fc, 4)] {
+            let mut rom = vec![0; 16 + 32768];
+            rom[..4].copy_from_slice(b"NES\x1a");
+            rom[4] = 2;
+            let offset = 16 + (address - 0x8000) as usize;
+            rom[offset..offset + 4].copy_from_slice(&[0xc5, 0, 0xf0, 0xfc]);
+            rom[16 + 32764..16 + 32766].copy_from_slice(&address.to_le_bytes());
+            let mut nes = Nes::new(Cart::load(&rom).unwrap());
+            for _ in 0..3 + branch_cycles - 1 { nes.clock(); }
+            nes.bus.borrow_mut().nmi = true;
+            nes.clock();
+            assert_eq!(nes.pc(), address);
+            assert!(!nes.cpu.nmi_pending);
+            for _ in 0..3 { nes.clock(); }
+            assert!(nes.cpu.nmi_pending);
+        }
     }
 }

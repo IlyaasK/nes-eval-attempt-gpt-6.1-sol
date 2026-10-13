@@ -349,8 +349,8 @@ impl Apu {
             _ => {}
         }
         self.tri.timer();
+        if self.cycle & 1 != 0 { self.noise.timer(); }
         if self.cycle & 1 == 0 {
-            self.noise.timer();
             self.pulse[0].timer();
             self.pulse[1].timer()
         }
