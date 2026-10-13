@@ -157,6 +157,9 @@ pub struct Bus {
     last_irq: bool,
     last_nmi: bool,
     nmi_sample: bool,
+    oam_active: bool,
+    dmc_active: bool,
+    last_dma_cycle: bool,
     request: Option<CycleOp>,
     result: Option<u8>,
 }
@@ -177,12 +180,16 @@ impl Bus {
             last_irq: false,
             last_nmi: false,
             nmi_sample: false,
+            oam_active: false,
+            dmc_active: false,
+            last_dma_cycle: false,
             request: None,
             result: None,
         }
     }
     fn execute(&mut self) {
         let op = self.request.take().expect("CPU bus request");
+        self.last_dma_cycle = self.oam_active || self.dmc_active;
         self.tick();
         let value =
             match op {
@@ -281,6 +288,7 @@ struct Cpu {
     s: u8,
     p: u8,
     pc: u16,
+    base_addr: u16,
     irq_pending: bool,
     nmi_pending: bool,
     jammed: bool,
@@ -292,6 +300,7 @@ impl Cpu {
     async fn dmc_dma(&mut self, a: u16) {
         let need = self.bus.borrow().apu.dmc_need();
         if need {
+            self.bus.borrow_mut().dmc_active = true;
             self.access(CycleOp::Read(a)).await;
             self.access(CycleOp::Read(a)).await;
             if self.bus.borrow().cycles & 1 == 0 {
@@ -300,6 +309,7 @@ impl Cpu {
             let addr = self.bus.borrow().apu.dmc_addr;
             let v = self.access(CycleOp::Read(addr)).await;
             self.bus.borrow_mut().apu.dmc_supply(v);
+            self.bus.borrow_mut().dmc_active = false;
         }
     }
     async fn read(&mut self, a: u16) -> u8 {
@@ -374,6 +384,7 @@ impl Cpu {
             Abs => self.word().await,
             Abx | Aby => {
                 let base = self.word().await;
+                self.base_addr = base;
                 let a =
                     base.wrapping_add(if m == Abx { self.x } else { self.y } as
                             u16);
@@ -395,6 +406,7 @@ impl Cpu {
                 let base =
                     l |
                         ((self.read(b.wrapping_add(1) as u16).await as u16) << 8);
+                self.base_addr = base;
                 let a = base.wrapping_add(self.y as u16);
                 if store || (base ^ a) & 0xff00 != 0 {
                     self.read((base & 0xff00) | (a & 255)).await;
@@ -409,12 +421,14 @@ impl Cpu {
         use Mode::*;
         let dma = self.bus.borrow_mut().dma.take();
         if let Some(page) = dma {
+            self.bus.borrow_mut().oam_active = true;
             self.read(self.pc).await;
             if self.bus.borrow().cycles & 1 != 0 { self.read(self.pc).await; }
             for i in 0..256 {
                 let v = self.read((page as u16) << 8 | i).await;
                 self.access(CycleOp::Oam(v)).await;
             }
+            self.bus.borrow_mut().oam_active = false;
             return
         }
         if self.jammed { self.read(self.pc).await; return }
@@ -551,7 +565,7 @@ impl Cpu {
                 } else {
                     let addr = self.address(mode, store || rmw).await;
                     if store {
-                        let high = ((addr >> 8) as u8).wrapping_add(1);
+                        let high = ((self.base_addr >> 8) as u8).wrapping_add(1);
                         let v =
                             match op {
                                 STA => self.a,
@@ -563,7 +577,13 @@ impl Cpu {
                                 TAS => { self.s = self.a & self.x; self.s & high }
                                 _ => self.a & self.x & high,
                             };
-                        self.write(addr, v).await
+                        // These unstable stores can also replace the address high byte
+                        // when the index carries out of the operand's low byte.
+                        let target = if matches!(op, AHX | SHX | SHY | TAS) &&
+                            (self.base_addr ^ addr) & 0xff00 != 0 {
+                            ((v as u16) << 8) | (addr & 255)
+                        } else { addr };
+                        self.write(target, v).await
                     } else {
                         let mut v = self.read(addr).await;
                         if rmw {
@@ -680,6 +700,7 @@ impl Nes {
                 s: 253,
                 p: 36,
                 pc,
+                base_addr: 0,
                 irq_pending: false,
                 nmi_pending: false,
                 jammed: false,
@@ -712,8 +733,57 @@ impl Nes {
     pub fn run_frame(&mut self) {
         if self.first_frame { self.first_frame = false; return }
         let frame = self.bus.borrow().ppu.frame;
-        while self.bus.borrow().ppu.frame == frame || self.pending.is_some() {
+        while self.bus.borrow().ppu.frame == frame ||
+            (self.pending.is_some() && !self.bus.borrow().last_dma_cycle) {
             self.clock()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oam_dma_suspends_at_the_frame_boundary_and_resumes() {
+        let mut rom = vec![0;16+32768];
+        rom[..4].copy_from_slice(b"NES\x1a");
+        rom[4]=2;
+        let mut code=vec![0x78,0xa9,1,0x8d,0x16,0x40];
+        for _ in 0..23{code.extend_from_slice(&[0xa2,255,0xca,0xd0,0xfd]);}
+        code.extend(std::iter::repeat_n(0xea,200));
+        code.extend_from_slice(&[0xa9,2,0x8d,0x14,0x40]);
+        let end=0x8000+code.len() as u16;
+        code.extend_from_slice(&[0x4c,end as u8,(end>>8) as u8]);
+        rom[16..16+code.len()].copy_from_slice(&code);
+        rom[16+32764..16+32766].copy_from_slice(&0x8000u16.to_le_bytes());
+        let mut nes=Nes::new(Cart::load(&rom).unwrap());
+        for i in 0..256{nes.bus.borrow_mut().ram[512+i]=i as u8;}
+        nes.run_frame();
+        assert_eq!(nes.bus.borrow().cycles,8);
+        nes.run_frame();
+        assert!(nes.bus.borrow().oam_active);
+        assert_eq!(nes.bus.borrow().ppu.oam[255],0);
+        nes.run_frame();
+        assert!(!nes.bus.borrow().oam_active);
+        assert_eq!(nes.bus.borrow().ppu.oam[255],255);
+    }
+}
+
+#[cfg(test)]
+mod unofficial_tests {
+    use super::*;
+    #[test]
+    fn shx_crossing_a_page_masks_data_and_the_destination_address() {
+        let mut rom=vec![0;16+32768];
+        rom[..4].copy_from_slice(b"NES\x1a");
+        rom[4]=2;
+        rom[16..24].copy_from_slice(&[0xa2,3,0xa0,1,0x9e,0xff,0x60,0x02]);
+        rom[16+32764..16+32766].copy_from_slice(&0x8000u16.to_le_bytes());
+        let mut nes=Nes::new(Cart::load(&rom).unwrap());
+        nes.run_frame();
+        nes.run_frame();
+        assert_eq!(nes.bus.borrow().ram[0x100],1);
+        assert_eq!(nes.bus.borrow().cart.ram[0x100],0);
     }
 }

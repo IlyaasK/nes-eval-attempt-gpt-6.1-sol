@@ -1,5 +1,7 @@
 //! Band-limited delta resampling. The source clock is the NTSC CPU clock;
 //! the output clock is 44.1 kHz. Keeping the clock fraction avoids frame drift.
+const CPU_HZ: u64 = 1_789_773;
+const CLOCK_SCALE: u64 = CPU_HZ * 12;
 const PHASES: usize = 256;
 const TAPS: usize = 34;
 pub struct Resampler {
@@ -60,8 +62,8 @@ impl Resampler {
         if delta != 0.0 {
             self.last = level;
             let clock =
-                (self.phase + 44100 * 12) as f64 / 21477272.0 -
-                    (8.0 * 44100.0 * 12.0 / 21477272.0);
+                (self.phase + 44100 * 12) as f64 / CLOCK_SCALE as f64 -
+                    (8.0 * 44100.0 * 12.0 / CLOCK_SCALE as f64);
             let center =
                 17.0 + clock - if self.started { 1.334 } else { 0.0 };
             self.started = true;
@@ -80,8 +82,8 @@ impl Resampler {
             }
         }
         self.phase += 44100 * 12;
-        if self.phase < 21477272 { return None }
-        self.phase -= 21477272;
+        if self.phase < CLOCK_SCALE { return None }
+        self.phase -= CLOCK_SCALE;
         self.integrator += self.ring[self.head];
         self.ring[self.head] = 0.0;
         self.head = (self.head + 1) & 127;

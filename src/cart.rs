@@ -72,7 +72,7 @@ impl Cart {
                     mapper==1||mapper==4{ram_size.max(8192)}else{ram_size}],
                 chr_ram: cs == 0,
                 mapper,
-                mirror: b[6] & 1,
+                mirror: if mapper == 1 { 2 } else { b[6] & 1 },
                 four: b[6] & 8 != 0,
                 bank: 0,
                 shift: 16,
