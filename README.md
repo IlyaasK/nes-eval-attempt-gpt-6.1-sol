@@ -25,6 +25,7 @@ returns the initialized framebuffer without executing CPU cycles; this was
 verified with a ROM that samples a button at its first instructions. The
 frame wrapper completes its current CPU instruction, and the framebuffer
 is updated in place, matching the oracle's observable top-row behavior.
+DMA transfers suspend at a frame boundary and resume on the next call.
 
 ## Development tools
 

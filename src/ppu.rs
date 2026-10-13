@@ -517,7 +517,7 @@ impl Ppu {
         }
         if self.scan < 240 && (1..=256).contains(&d) { self.render_pixel() }
         self.ticks += 1;
-        if self.scan == 261 && d == 339 && self.frame & 1 != 0 &&
+        if self.scan == 261 && d == 339 && self.frame & 1 == 0 &&
                 self.skip_render {
             self.dot = 0;
             self.scan = 0;

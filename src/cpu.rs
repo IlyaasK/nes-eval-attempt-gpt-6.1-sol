@@ -423,7 +423,7 @@ impl Cpu {
         if let Some(page) = dma {
             self.bus.borrow_mut().oam_active = true;
             self.read(self.pc).await;
-            if self.bus.borrow().cycles & 1 != 0 { self.read(self.pc).await; }
+            if self.bus.borrow().cycles & 1 == 0 { self.read(self.pc).await; }
             for i in 0..256 {
                 let v = self.read((page as u16) << 8 | i).await;
                 self.access(CycleOp::Oam(v)).await;
