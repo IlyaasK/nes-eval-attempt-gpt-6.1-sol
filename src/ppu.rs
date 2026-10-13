@@ -583,6 +583,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn final_pixel_uses_the_references_next_line_sprite_count() {
+        let mut ppu = Ppu::new();
+        ppu.mask = 0x1e;
+        ppu.lo = 0xffff;
+        ppu.pal[1] = 17;
+        ppu.pal[17] = 36;
+        ppu.count = 2;
+        ppu.eval_pos = 4;
+        ppu.sprites[1] = Sprite { x: 0, attr: 0, lo: 128, hi: 0, index: 1 };
+        ppu.dot = 255;
+        ppu.render_pixel();
+        assert_eq!(ppu.fb[254], 36);
+        ppu.sprites[1].lo = 128;
+        ppu.dot = 256;
+        ppu.render_pixel();
+        assert_eq!(ppu.fb[255], 17);
+        ppu.eval_pos = 8;
+        ppu.sprites[1].lo = 128;
+        ppu.render_pixel();
+        assert_eq!(ppu.fb[255], 36);
+    }
+
+    #[test]
     fn publishing_a_prepared_pixel_does_not_advance_sprite_zero_or_the_clock() {
         let mut ppu = Ppu::new();
         ppu.dot = 2;

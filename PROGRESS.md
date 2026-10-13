@@ -94,7 +94,7 @@ a palette-write diagnostic matched all six oracle frames exactly.
 
 ## Validation and output measurements
 
-13 unit tests plus one ABI integration test pass. Units cover mapper
+15 unit tests plus one ABI integration test pass. Units cover mapper
 banking/RAM/mirroring/header overflow, SHX page carry masking, partial DMA,
 DMA parity and duration, branch NMI deferral, and frame-counter IRQ phase.
 
@@ -108,14 +108,26 @@ The 660-frame `tools/gameplay.txt` replay exercises Start, A, held directions,
 and A+B and takes every bundled game beyond its title. Current audio RMSE:
 Stallar ~3.53 PCM (previously ~595), File Fixers ~2.08 (previously ~12.5).
 Pulse channel 2 isolated RMSE ~0.81, triangle ~0.91, isolated noise ~2.59.
+RHDE ~0.94 and RFK ~0.45. Native/wasm Stallar framebuffer/audio hashes
+match exactly: 455016102 / -520129133.
 The remaining differences are largely resampling/filter approximation.
 Sample counts match: 483551 samples for all 660-frame game traces.
 
-Video after the timing fixes, before the audio-only pulse correction (which
-cannot change CPU/PPU timing): RFK 659/660 exact, 1 pixel total; RHDE 657/660,
-3 pixels total; File Fixers 650/660, 10 pixels total; Stallar 643/660, 17 pixels
-total. Every differing frame has one pixel. Almost all are row zero prefixes;
-Stallar additionally differs at frames 403/404 (row 207), 414 (row 155).
+Latest video: all 2640 frames of the four 660-frame game replays match the
+oracle byte-for-byte. Two additional findings removed the last pixels:
+
+- The callback publishes the pixel prepared for the next PPU dot. The new
+  Ppu::publish_next_pixel exposes it without advancing time, sprite shifters,
+  or status flags. Seven original palette-write boundary variants matched
+  all six frames each, including writes on the very last CPU bus cycle.
+- At column 255 the reference already uses the following scanline's sprite
+  count, while the pixel shift data still belongs to the current scanline.
+  Limit output slots there to min(current_count, eval_pos/4). Independent
+  solid-sprite probes showed bottom-right pixels missing only when the
+  next-line count drops; adding an unrelated sprite on the left restores
+  the first slot's bottom-right pixel. Swapping OAM order proved it is a
+  count limit rather than a per-sprite Y check or a global empty-line test.
+  This fixed Stallar frames 403/404/414. Units protect both behaviors.
 
 ## Useful diagnostics and artifacts
 
@@ -172,11 +184,41 @@ The required cargo build itself uses no custom flags or config.
    sinc beta .9206/radius16/offset1.334 and filters are approximations. CPU
    write timestamps and all channel states now match these game probes, so
    sample differences can be investigated without conflating CPU/APU errors.
-2. The one-pixel frame-prefix differences and Stallar's three in-frame pixel
-   differences. PPUMASK propagation and rendering register/OAM edge cases
-   remain plausible; a palette-write probe already matches exactly.
+2. Broader game replays and rendering register/OAM edge cases. The bundled
+   660-frame videos now match exactly, but that is not exhaustive validation.
 3. DMC/OAM overlap: nested CPU::read DMC stalls can flip OAM GET parity. Need
    bus arbitration/overlap probes with audio and sprite/video timing, not
    only DMC rate tests. Controller deletion during DMC DMA also needs checks.
 4. Mapper 2/3 bus-conflict/submapper behavior, MMC1 board variants, wider
    real-game input traces, and rendering-time PPUDATA/OAM behavior.
+
+## Current resampler investigation
+
+`.out/resampler/random-dac.nes` plays 800 original randomly spaced 0/96 DAC
+transitions; trace in random-dac.txt, reference WAV and native raw nearby.
+Current native RMSE ~5.23 PCM; old fast periodic DAC probe RMSE ~11.7.
+`extract.py` removes HP90/440 and differentiates to obtain normalized impulse
+observations. IMPORTANT: dequantize PCM with +0.5*sign(pcm) before inversion;
+otherwise truncation biases inferred DC gain (~0.99964 vs true ~1.0).
+`impulses.npz` contains coordinates, observed impulses, events and PCM.
+Blackman point-sinc fits beta .92068, radius16.004, offset -1.30904 relative
+to the CPU WRITE timestamp, LP alpha .86059/gain1.0029, but residual is still
+large. Box-integrated sinc models were worse. Per-event phase fitting shows
+~0.002-sample scatter, partially consistent with a 256-phase quantization;
+no resampler implementation change has been made. Sources fit_models.py and
+fit_phases.py are exploratory, not validated DSP replacements.
+
+New framebuffer artifacts: `.out/published-{rfk,rhde,ff,stallar}` match the
+first three completely; Stallar there predates the column-255 count fix.
+`.out/edge-fixed-stallar` matches all 660 frames. `run-edge-fixed` is the
+latest non-trace native binary; the standard runner is rebuilt as needed.
+Sprite probes use sprite_edge_probe.s + nrom_chr.cfg; defines OVERLAP and
+COUNT_DROP select the corroborating OAM-order variants.
+
+The DMA reference documentation now explains the old page-$40 probe:
+2A03 internal register decode takes high address bits from the HALTED CPU
+address, and low five bits from the DMA bus. An OAM read of $4016 while the
+CPU is halted at ROM does not activate the controller. This is hardware
+address gating, not proof of a side-effect-free DMA peek. A proper arbiter
+should preserve the halted CPU address, overlap DMC halt/dummy/alignment
+with OAM transfer cycles, and keep GET/PUT parity. See spec/docs/.../DMA.md.
