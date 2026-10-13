@@ -734,6 +734,7 @@ impl Nes {
             (self.pending.is_some() && !self.bus.borrow().last_dma_cycle) {
             self.clock()
         }
+        self.bus.borrow_mut().ppu.publish_next_pixel();
     }
 }
 

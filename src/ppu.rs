@@ -224,6 +224,11 @@ impl Ppu {
         self.bus_set(val, 255);
         let r = reg & 7;
         if cycle < 29658 && [0, 1, 5, 6].contains(&r) { return }
+        #[cfg(feature="trace")]
+        if r == 1 {
+            eprintln!("MASK {} {} {} {} {} {}", cycle, self.frame, self.scan,
+                self.dot, self.mask, val);
+        }
         match r {
             0 => {
                 self.ctrl = val;
@@ -404,6 +409,25 @@ impl Ppu {
             }
         }
     }
+    /// The frame callback exposes the pixel prepared for the next dot. This
+    /// does not advance CPU/PPU time or the sprite-zero/overflow status.
+    pub fn publish_next_pixel(&mut self) {
+        if self.scan != 0 || !(1..=256).contains(&self.dot) { return }
+        let shifts = (self.lo, self.hi, self.atlo, self.athi);
+        let sprites = self.sprites;
+        let status = self.status;
+        if self.rendering() && self.dot >= 2 {
+            self.lo <<= 1;
+            self.hi <<= 1;
+            self.atlo <<= 1;
+            self.athi <<= 1;
+        }
+        self.render_pixel();
+        (self.lo, self.hi, self.atlo, self.athi) = shifts;
+        self.sprites = sprites;
+        self.status = status;
+    }
+
     pub fn tick(&mut self, c: &mut Cart) {
         let d = self.dot;
         if self.scan == 261 && d == 338 {
