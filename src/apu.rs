@@ -195,6 +195,7 @@ pub struct Apu {
     pub dmc_irq: bool,
     pub frame_irq: bool,
     frame_mode: u8,
+    frame_active_five: bool,
     frame_cycle: u32,
     reset_delay: u8,
     cycle: u64,
@@ -224,6 +225,7 @@ impl Apu {
             dmc_irq: false,
             frame_irq: false,
             frame_mode: 0,
+            frame_active_five: false,
             frame_cycle: 8,
             reset_delay: 0,
             cycle: 8,
@@ -334,21 +336,22 @@ impl Apu {
             self.reset_delay -= 1;
             if self.reset_delay == 0 {
                 self.frame_cycle = 0;
-                if self.frame_mode & 128 != 0 { self.quarter(); self.half() }
+                self.frame_active_five = self.frame_mode & 128 != 0;
+                if self.frame_active_five { self.quarter(); self.half() }
             }
         }
         match self.frame_cycle {
             7457 | 22371 => self.quarter(),
             14913 => { self.quarter(); self.half() }
             29828..=29830 =>
-                if self.frame_mode & 128 == 0 {
+                if !self.frame_active_five {
                     if self.frame_mode & 64 == 0 { self.frame_irq = true }
                     if self.frame_cycle == 29829 { self.quarter(); self.half() }
                     if self.frame_cycle == 29830 { self.frame_cycle = 0 }
                 },
             37281 =>
-                if self.frame_mode & 128 != 0 { self.quarter(); self.half() },
-            37282 => if self.frame_mode & 128 != 0 { self.frame_cycle = 0 },
+                if self.frame_active_five { self.quarter(); self.half() },
+            37282 => if self.frame_active_five { self.frame_cycle = 0 },
             _ => {}
         }
         // The fixed power-on alignment places the half-rate timer edge on
@@ -471,6 +474,25 @@ mod tests {
         assert_eq!(apu.dmc_out, 2);
         for _ in 0..54 { apu.tick(); }
         assert_eq!(apu.dmc_out, 4);
+    }
+
+    #[test]
+    fn frame_mode_is_delayed_but_irq_inhibit_changes_on_the_write() {
+        // The original frame_mode_probe reads $4015 four cycles after these
+        // writes. Mode $80 keeps the old sequence alive through its IRQ edge;
+        // mode $c0 suppresses that same edge immediately.
+        for (write_cycle, mode, expected_irq) in [
+            (29846, 128, false), (29848, 128, true),
+            (29850, 128, true), (29848, 192, false),
+        ] {
+            let mut apu = Apu::new();
+            while apu.cycle < 18 { apu.tick(); }
+            apu.write(0x4017, 64);
+            while apu.cycle < write_cycle { apu.tick(); }
+            apu.write(0x4017, mode);
+            for _ in 0..4 { apu.tick(); }
+            assert_eq!(apu.status(0) & 64 != 0, expected_irq);
+        }
     }
 
     #[test]

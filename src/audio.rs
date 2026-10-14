@@ -4,6 +4,8 @@ const CPU_HZ: u64 = 1_789_773;
 const CLOCK_SCALE: u64 = CPU_HZ * 12;
 const PHASES: usize = 256;
 const TAPS: usize = 34;
+#[path = "audio_kernel.rs"]
+mod kernel;
 pub struct Resampler {
     kernels: Vec<[f64; TAPS]>,
     ring: [f64; 128],
@@ -21,25 +23,15 @@ pub struct Resampler {
 }
 impl Resampler {
     pub fn new() -> Self {
-        let mut kernels = vec![[0.0;TAPS];PHASES+1];
-        for (p, kernel) in kernels.iter_mut().enumerate() {
-            let frac = p as f64 / PHASES as f64;
+        let mut kernels = vec![[0.0; TAPS]; PHASES + 1];
+        for (p, taps) in kernels.iter_mut().enumerate() {
+            let phase = p as f64 / PHASES as f64;
             let mut sum = 0.0;
-            for (i, k) in kernel.iter_mut().enumerate() {
-                let x = i as f64 - 16.0 - frac;
-                let w =
-                    if x.abs() < 16.0 {
-                        0.42 + 0.5 * (std::f64::consts::PI * x / 16.0).cos() +
-                            0.08 * (2.0 * std::f64::consts::PI * x / 16.0).cos()
-                    } else { 0.0 };
-                let z = std::f64::consts::PI * x * 0.9206;
-                *k =
-                    if z.abs() < 1e-12 {
-                        0.9206 * w
-                    } else { 0.9206 * w * z.sin() / z };
-                sum += *k;
+            for (i, tap) in taps.iter_mut().enumerate() {
+                *tap = kernel::impulse(i as f64 - 16.0 - phase);
+                sum += *tap;
             }
-            for k in kernel { *k /= sum; }
+            for tap in taps { *tap /= sum; }
         }
         Self {
             kernels,
@@ -83,7 +75,13 @@ impl Resampler {
                 }
                 self.started = true;
             } else {
-                let center = 17.0 + clock - 1.334;
+                // The reference quantizes the absolute CPU-clock phase to
+                // 1/256 sample before removing the eight reset cycles.
+                let reset_phase = 7.0 * 44100.0 / CPU_HZ as f64;
+                let source_phase = clock + reset_phase;
+                let quantized = (source_phase * 256.0).floor() / 256.0;
+                let center = 17.0 + clock - 1.334
+                    + quantized - source_phase + 1.0 / 512.0;
                 let base = center.floor() as isize - 16;
                 let pos = (center - center.floor()) * PHASES as f64;
                 let p = pos as usize;

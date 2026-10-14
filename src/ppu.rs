@@ -228,6 +228,7 @@ impl Ppu {
         if r == 1 {
             eprintln!("MASK {} {} {} {} {} {}", cycle, self.frame, self.scan,
                 self.dot, self.mask, val);
+            eprintln!("OAM_MASK {} {} {} {} {} {} {}", cycle, self.frame, self.scan, self.dot, self.oam_addr, self.eval_n, self.eval_m);
         }
         #[cfg(feature="trace")]
         if r == 0 || r == 5 || r == 6 {
@@ -347,6 +348,10 @@ impl Ppu {
             }
         }
         if self.eval_n >= 64 { self.eval_n = 0; self.eval_done = true }
+        // The evaluator and CPU/DMA share OAMADDR. Forced blanking before
+        // evaluation finishes preserves this byte address, so a subsequent
+        // DMA can rotate the sprite list if software does not write $2003.
+        self.oam_addr = self.eval_n.wrapping_mul(4) | self.eval_m;
     }
     fn sprite_address(&self, i: usize) -> u16 {
         let y = self.secondary[i * 4];
@@ -581,6 +586,28 @@ impl Ppu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forced_blanking_preserves_the_sprite_evaluators_oam_address() {
+        let mut ppu = Ppu::new();
+        let mut rom = vec![0; 16 + 16384];
+        rom[..4].copy_from_slice(b"NES\x1a");
+        rom[4] = 1;
+        let mut cart = Cart::load(&rom).unwrap();
+        ppu.scan = 61;
+        ppu.dot = 1;
+        ppu.mask = 0x1e;
+        ppu.oam.fill(255);
+        ppu.oam[..4].copy_from_slice(&[60, 1, 0, 20]);
+        while ppu.dot <= 70 { ppu.tick(&mut cart); }
+        assert_eq!(ppu.oam_addr, 3);
+        ppu.write_reg(&mut cart, 0x2001, 0, 30000);
+        while ppu.scan == 61 { ppu.tick(&mut cart); }
+        assert_eq!(ppu.oam_addr, 3);
+        ppu.write_reg(&mut cart, 0x2004, 42, 30100);
+        assert_eq!(ppu.oam[3], 42);
+        assert_eq!(ppu.oam_addr, 4);
+    }
 
     #[test]
     fn final_pixel_uses_the_references_next_line_sprite_count() {

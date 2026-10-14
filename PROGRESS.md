@@ -80,21 +80,59 @@ a palette-write diagnostic matched all six oracle frames exactly.
 - Noise compatibility: reload the full listed period on the half-rate
   clock, giving e.g. 66 CPU cycles for period index 3 (32), unlike the NES
   hardware table's usual interpretation. Power noise shift 0x4000/timer 1.
-- DMC rate index 13 is 84. Its power timer is 419 after eight reset cycles.
-  DMC fetches currently align to even CPU cycles; DMC/OAM overlap is still
-  modeled through nested DMA and warrants a real arbiter investigation.
+- DMC rate index 13 is 84. Its power timer is 422 after eight reset cycles.
+  A sample at rate 15 empties the buffer at cycle 809 and changes DAC at 863.
+  A shared Bus arbiter now handles DMC/OAM overlap; see below.
 - Audio output delay is 17 samples and initial clock phase is eight reset
   cycles. A 20,000-frame clock probe constrained CPU_HZ to 1789773 +/-0.06;
   the rounded 1,789,773 Hz clock prevents long-run sample-count drift.
 - OAM DMA can suspend at a frame boundary; last_dma_cycle flags preserve its
-  pending future. The original DMA page $40 probe reports zero controller
-  data in the oracle even when strobe is high. An early-DMA variant also
-  does so, while direct CPU controller/OAM reads work. This suggests a
-  separate I/O peek path in reference DMA, NOT evidence about frame pausing.
+  pending CPU operation. This is now implemented in Bus, not Cpu futures.
+- Triangle timers clock BEFORE coincident frame-counter gate updates. A
+  2400-frame File Fixers replay exposed a permanent phase error at 27.9 sec;
+  moving the timer ahead of linear/length clocks fixes it (full RMSE 121 ->
+  2.04). Small original start/stop edge probes and a unit protect this.
+- Sprite evaluation updates the shared OAMADDR byte after each even dot.
+  Disabling rendering mid-evaluation preserves an unaligned address, which
+  rotates the next DMA if software omits $2003. RFK's software reboot while
+  evaluating at line 205 dot 107 left OAMADDR 75. Tracking that fixed its
+  one-frame sprite disappearance mismatch in a 5000-frame varied replay.
+
+## Verified DMA and controller architecture
+
+CycleOp holds a pending CPU Read/Write. Bus.execute ticks devices FIRST,
+then arbitrates the same cycle; it returns false while DMA owns the bus and
+keeps the CPU operation pending. Fields track OAM page/index/latch/data,
+DMC pending time/stage, and the halted CPU address. DMC GET wins even cycles;
+OAM GET/PUT can proceed while DMC does halt/dummy/alignment. A stolen OAM
+GET creates one PUT alignment cycle, normally adding two CPU cycles. Ten
+original tail-overlap cases also match their one/three-cycle extensions.
+
+First DMC enable schedules halt at write+4 for even writes, +3 odd. A buffer
+empty event schedules halt on the current PUT or following PUT. The new
+422 power timer plus same-cycle arbitration matches initial load marker 55,
+OAM overlap marker 983, and every measured DMA tail marker exactly.
+
+DMA external addresses access RAM/PPU/cart normally; internal $4000-$401f
+floats. Internal 2A03 I/O decode combines high bits from the halted CPU
+address with low five DMA address bits. Only resulting $4015/16/17 activates
+status/controllers. Actual GET updates CPU open bus; repeated halt/alignment
+reads preserve its old value while retaining peripheral effects. Original
+page-$40 OAM probes produce $40 from the prior DMA write, or $ff after an
+interleaved DMC GET, matching the reference. Do not restore the older peek
+hypothesis or nested CPU DMA implementation.
+
+Controller shifting occurs once per contiguous /OE assertion. Repeated DMA
+halt reads return the latched bit; a DMC cart read can release /OE and delete
+one bit. A DMC shadow read selecting the same controller keeps /OE asserted
+and corrupts fetched audio data with controller bit zero. Both original
+controller-DMC probes match video/input and the shadow case audio. Normal
+CPU intervening accesses and OAM PUT release /OE. Tests protect these cases.
+
 
 ## Validation and output measurements
 
-15 unit tests plus one ABI integration test pass. Units cover mapper
+24 unit tests plus one ABI integration test pass (latest changes included). Units cover mapper
 banking/RAM/mirroring/header overflow, SHX page carry masking, partial DMA,
 DMA parity and duration, branch NMI deferral, and frame-counter IRQ phase.
 
@@ -180,15 +218,16 @@ The required cargo build itself uses no custom flags or config.
 
 ## Next investigations
 
-1. Exact FIR, mixer, filters and first-transient matching. Current fractional
+1. Exact FIR, mixer and filters. Current fractional
    sinc beta .9206/radius16/offset1.334 and filters are approximations. CPU
    write timestamps and all channel states now match these game probes, so
    sample differences can be investigated without conflating CPU/APU errors.
 2. Broader game replays and rendering register/OAM edge cases. The bundled
    660-frame videos now match exactly, but that is not exhaustive validation.
-3. DMC/OAM overlap: nested CPU::read DMC stalls can flip OAM GET parity. Need
-   bus arbitration/overlap probes with audio and sprite/video timing, not
-   only DMC rate tests. Controller deletion during DMC DMA also needs checks.
+3. Rendering-time OAM DMA still writes the raw OAM array rather than the
+   PPU register path. Probe its write blocking/address increments and wider
+   DMA peripheral interactions. DMC/OAM arbiter and controller deletion are
+   now validated by original probes and bundled rate tests.
 4. Mapper 2/3 bus-conflict/submapper behavior, MMC1 board variants, wider
    real-game input traces, and rendering-time PPUDATA/OAM behavior.
 
@@ -222,3 +261,42 @@ CPU is halted at ROM does not activate the controller. This is hardware
 address gating, not proof of a side-effect-free DMA peek. A proper arbiter
 should preserve the halted CPU address, overlap DMC halt/dummy/alignment
 with OAM transfer cycles, and keep GET/PUT parity. See spec/docs/.../DMA.md.
+
+## Latest longer gameplay and startup audio validation
+
+`tools/extended-gameplay.txt` extends the original replay to 2400 frames.
+All 4800 video frames of Stallar/File Fixers match, with 1760348 samples.
+Current mixed audio RMSE is Stallar 3.898 and File Fixers 2.027 after the
+triangle gate fix and startup impulse correction. Old FF error grew above
+200 PCM after 28 seconds; that state divergence is resolved.
+
+`tools/varied-gameplay.txt` uses seed 0xc02a03, 136 changes over 5000 frames,
+including Select, Start, one-frame taps, held inputs, opposing directions,
+and all buttons. All 20000 video frames match after OAMADDR tracking (other
+three native directories still predate that PPU-only change, so recheck).
+All four have 3668206 samples. RMSE RFK .000738, RHDE 1.217, FF 2.039,
+Stallar 3.858. References .out/varied-ref-{rfk,rhde,ff,stallar}, WAVs adjacent;
+native .out/varied-native-* except newest RFK .out/varied-rfk-oamaddr.
+
+The fixed startup phase uses a calibrated cumulative FIR impulse after the
+17-sample discard, derived from an original no-write power audio ROM and
+inversion of the known analog filters. First 16 samples match exactly across
+six probes/games; no per-ROM behavior. HP/LP coefficients now use exact
+exp(-2*pi*f/44100) values. Power-only RMSE .012, RFK660 .002, random DAC
+5.153 (old 5.227). .out/audio-before-startup.rs is the old implementation;
+.out/run-tri-fixed has corrected triangle timing but old startup kernel.
+
+Minimal triangle-edge traces .out/triangle-edge/phase0.txt and ROM place a
+period-84 reload at quarter-clock 14935. Old native RMSE after sample400 was
+8.125, corrected .0199. Condensed FF triangle write replay in
+.out/ff-tri-condensed.txt must retain the first length write AFTER enable;
+removing all identical $400b values incorrectly leaves it disabled.
+
+Offline exploratory FIR fitting: .out/resampler/fit_spline*.py recovers a
+single continuous impulse response with cubic splines from 800 random DAC
+transitions (half held out). 1/64 spacing reduces inverse-filter residual to
+~2.36 PCM versus ~13.65 for point sinc, but no normal FIR implementation
+change yet. .out/resampler/spline.npz is exploratory. Quantized phase256
+partly explains per-event delay scatter; fit_phases.py reports residual std
+.00157 versus .00195 continuous. Need validated unseen probes/dense game
+replays before replacing the normal kernel.
