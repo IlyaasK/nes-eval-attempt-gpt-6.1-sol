@@ -16,8 +16,10 @@ APU one cycle per CPU bus cycle. The PPU uses background shifters, secondary
 OAM evaluation, sprite fetches, scrolling registers, and palette indices.
 Cartridges support NROM, MMC1, UxROM, CNROM, and MMC3, including CHR RAM,
 MMC1 outer PRG banking, MMC3 bank inversion and IRQs, and NES 2.0 RAM sizes.
-Audio uses the five APU channels, nonlinear mixing, fractional-clock
-band-limited resampling, and high/low-pass filters.
+Audio uses the five APU channels, nonlinear mixing, a calibrated polyphase
+reconstruction filter with a fractional CPU clock, and high/low-pass filters.
+`tools/calibrate_audio.py` regenerates the generic FIR coefficients from
+isolated reference DAC probes; independent game replays validate them.
 
 The implementation is under active development and is not fully accurate.
 The bundled oracle is the compatibility target. Its first `run_frame` call

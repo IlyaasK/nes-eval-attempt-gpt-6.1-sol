@@ -4,6 +4,12 @@
 .segment "PAD"
 .res $6000,0
 .segment "CODE"
+.ifndef CTRL
+CTRL = $08
+.endif
+.ifndef LATCH
+LATCH = 8
+.endif
 reset:
  sei
  lda #$40
@@ -18,10 +24,11 @@ wait1:
 wait2:
  bit $2002
  bpl wait2
- lda #$08
+ lda #CTRL
  sta $2000
+ lda #$08
  sta $2001
- lda #8
+ lda #LATCH
  sta $c000
  sta $c001
  sta $e001

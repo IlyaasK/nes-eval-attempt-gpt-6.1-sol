@@ -22,7 +22,7 @@ determinism and draining. Do not mark the task complete.
 - `src/ppu.rs`: dot-clocked background shifts/fetches, scrolling, secondary
   OAM evaluation/fetches, sprite zero/overflow, palette/open bus/warmup.
 - `src/apu.rs`: pulse, triangle, noise, DMC, frame counter and IRQs.
-- `src/audio.rs`: nonlinear mixer, fractional-phase Blackman-window sinc
+- `src/audio.rs`: nonlinear mixer, calibrated polyphase FIR
   delta synthesis and HP90/HP440/LP14k filters. Approximate, not exact yet.
 - `src/cart.rs`: mappers 0/1/2/3/4, NES1/2, CHR RAM, RAM requirements,
   MMC1 serial/RMW filtering/512 KiB outer bank, MMC3 inversion/A12 IRQ.
@@ -132,7 +132,7 @@ CPU intervening accesses and OAM PUT release /OE. Tests protect these cases.
 
 ## Validation and output measurements
 
-24 unit tests plus one ABI integration test pass (latest changes included). Units cover mapper
+26 unit tests plus one ABI integration test pass (latest changes included). Units cover mapper
 banking/RAM/mirroring/header overflow, SHX page carry masking, partial DMA,
 DMA parity and duration, branch NMI deferral, and frame-counter IRQ phase.
 
@@ -224,10 +224,10 @@ The required cargo build itself uses no custom flags or config.
    sample differences can be investigated without conflating CPU/APU errors.
 2. Broader game replays and rendering register/OAM edge cases. The bundled
    660-frame videos now match exactly, but that is not exhaustive validation.
-3. Rendering-time OAM DMA still writes the raw OAM array rather than the
-   PPU register path. Probe its write blocking/address increments and wider
-   DMA peripheral interactions. DMC/OAM arbiter and controller deletion are
-   now validated by original probes and bundled rate tests.
+3. Wider DMA peripheral interactions and rendering-time OAM side effects.
+   The reference directly writes OAM during DMA even when rendering is on;
+   a direct CPU $2004 write is blocked. Original render_dma_probe.s proves
+   both paths (DIRECT_WRITE variant). Do not unify those paths blindly.
 4. Mapper 2/3 bus-conflict/submapper behavior, MMC1 board variants, wider
    real-game input traces, and rendering-time PPUDATA/OAM behavior.
 
@@ -272,8 +272,8 @@ triangle gate fix and startup impulse correction. Old FF error grew above
 
 `tools/varied-gameplay.txt` uses seed 0xc02a03, 136 changes over 5000 frames,
 including Select, Start, one-frame taps, held inputs, opposing directions,
-and all buttons. All 20000 video frames match after OAMADDR tracking (other
-three native directories still predate that PPU-only change, so recheck).
+and all buttons. All 20000 video frames match after OAMADDR tracking; the other three
+games were also rerun after that change and all 15000 frames matched.
 All four have 3668206 samples. RMSE RFK .000738, RHDE 1.217, FF 2.039,
 Stallar 3.858. References .out/varied-ref-{rfk,rhde,ff,stallar}, WAVs adjacent;
 native .out/varied-native-* except newest RFK .out/varied-rfk-oamaddr.
@@ -300,3 +300,95 @@ change yet. .out/resampler/spline.npz is exploratory. Quantized phase256
 partly explains per-event delay scatter; fit_phases.py reports residual std
 .00157 versus .00195 continuous. Need validated unseen probes/dense game
 replays before replacing the normal kernel.
+
+## Latest calibrated FIR and frame-mode correction
+
+Normal FIR is now a generic cubic B-spline reconstruction filter in
+src/audio_kernel.rs, spacing 1/256 sample, support +/-16. Polyphase kernels
+are computed at startup and normalized; their values are independent of
+cartridge data. The timing quantizer floors the absolute CPU WRITE phase to
+1/256 sample before removing eight reset cycles. In Resampler the observed
+level changes on the NEXT CPU tick, so add 7 reset-cycle fractions to the
+local clock before quantization. This was derived from the pattern of
+per-event phase residuals, not a game-specific adjustment.
+
+`tools/calibrate_audio.py WAV TRACE POWER_WAV OUTPUT` reproduces every
+current coefficient exactly. Example inputs are .out/resampler/random-dac-
+ref.wav, random-dac.txt, power-ref.wav. It first recovers a spline from
+inverse-filtered impulses, holding out half the phases, then refines the
+coefficients in PCM space with DC constraints and small smoothing. This
+avoids amplifying integer PCM quantization noise in the inverse filters.
+The coefficients were validated against a fresh 700-write varied-DAC ROM
+(seed 0xdac2c02) and game audio, independent of the original DAC pattern.
+
+Current .out/pcm-fit-* measurements: random DAC RMSE .1005, fresh DAC .1504,
+File Fixers2400 .1163, Stallar2400 .2099, RHDE660 .0442. Dense game peaks are
+2 PCM; fresh DAC peak3, original peak4. Coefficient calibration is generic;
+no output samples or game state are stored in the emulator. Native and wasm
+File Fixers2400 hashes match: framebuffer445537872 / audio-2041901648,
+1760348 samples at44100. Stallar2400 native hashes1283754735/-1062086199.
+Old analytic FIR backup .out/audio-with-startup.rs; old calibrated continuous
+kernel .out/audio-kernel-continuous.rs; quantized128 and quantized256 backups
+nearby. .out/run-audio-trials.py runs the five current reference comparisons.
+
+Frame sequencer $4017 mode bit7 takes effect on delayed reset; IRQ inhibition
+bit6 takes effect immediately. Old code changed both immediately, missing
+IRQ flags when switching to mode5 just before the old mode4 edge. Added
+frame_active_five, updated on delayed reset. frame_mode_probe.s tested modes
+0/64/128/192 at writes29844/46/48/50/52; mode128 at48/50 previously mismatched
+and now matches. Unit protects mode delay versus immediate inhibition.
+
+Original oam_rotation_probe.py disables rendering at line61dot70, writes
+$2004, and encodes readback of attribute byte2. Reference/current palette47,
+old native15; this independently proves the shared OAMADDR fix. RFK varied
+replay disabled at line205dot107 retaining75 and rotating its next DMA.
+
+All30 RAM-reporting bundled diagnostics still pass after these changes
+(reset ROM remains at129 asking for hardware reset). A new oracle final-
+frame/audio sweep is running, output .out/diagnostic-ref/results.json.
+This may expose reference-versus-hardware diagnostic differences; inspect
+its results rather than assuming passing RAM status means exact output.
+
+## Current open issue: MMC3 background-$1000 IRQ timing
+
+The oracle diagnostic sweep completed: all30 final images matched EXCEPT
+mmc3_test_2__4-scanline_timing. Oracle fails #9: "Scanline 0 IRQ should occur
+sooner when $2000=$10". Native passes. Its final image differs987pixels,
+audio RMSE207.88, native samplecount+1. This needs compatibility investigation;
+do not special-case the test or assume hardware pass means reference match.
+Reference PNG .out/mmc3-scan-ref.png versus native .out/mmc3-scan-native.png.
+Whole PRG disassembly .out/mmc3-scan-disassembly.s. Test9 starts LE641,
+setsctrl$10 and latch0 via LE408, then samplesIRQtiming LE41C. Trace
+.out/mmc3_test_2__4-scanline_timing-trace.txt includes PPU_WRITE and APU writes;
+MASK was not retained by this filtered trace. CTRL$10 writecycle6251572
+(frame209line241dot66) is probably test9; laternative continuesalltests
+whereoraclestopsat9.
+
+Updated original mmc3_irq_marker_probe.s supports CTRL(default8) and LATCH
+(default8); settingCTRL16/LATCH0 reproduces mismatch without the bundledtest:
+.out/mmc3-bg1000/probe.nes, probe-ref.wav (30frames), native/audio.raw
+RMSE191.3 peak761. Allsprite-$1000/bg-$0000 markers previously matchedexactly,
+so likely the background A12 presentation/filter or reversal-case edge.
+Current PPU explicitly presents backgroundCHR at dot324 (and visibledot4
+of each8); nativeactualreadoccurs325 (visible5). SpriteCHRpresent260 remains
+correct for prior723referenceIRQtimestamps and games. Visible dot0 CHR
+presentation is also currentlyrequiredbyearlierdiagnosticexperiments.
+Do not change those globally without regression ofbothpatterns.
+
+A timing measurement job is running in exec session24782: builds trace,
+runs probe30 retainingWRITE rows .out/mmc3-bg1000/writes.txt, then original
+DAC-only replays of allmarkers beforeCPU120000 for offsets -2..2. Each
+candidateoracleWAV (5frames) is comparedtooriginalref first2850samples;
+zero RMS means those nativeCPUtimestamps plusoffset exactly matchreference.
+See its output next to determine the direction/size of the edge error.
+
+The two APU lengthdiagnostic audio discrepancies were ultrasonic triangle
+periods0/1. Reference holdssequencer/DAC15 while gates/counters stilloperate.
+Addedperiod>1 to triangle sequenceadvance. Parameterizedtriangle_probe.s
+PERIOD0..4 proves cutoff: 0/1 RMSE.012peak1, 2..4 RMSE.35-.38peak1.
+All26units+ABIpass and wasm built with thisfix. Lengthtable600 audio RMSE
+.01349peak1, lengthtiming600 .03021peak1 (previous55.3/42.9). Outputs
+.out/ultra-fixed-apu_test__*. Initialdiagnosticresults.json stillcontainsold
+largeaudioerrors; referenceWAVs remainvalid. Everyotherdiagnostic audio
+was~.01-.017RMSE andpeak1 exceptMMC3 failure. Nextregularnative buildshould
+remove trace feature; currentbinarymaybetrace fromrunningtimingjob.

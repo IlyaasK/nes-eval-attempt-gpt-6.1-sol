@@ -1,7 +1,7 @@
 //! Generic reconstruction filter calibrated with isolated DAC impulses.
 //! Uniform cubic B-spline coefficients, spacing 1/256 sample, origin -18.
-//! The calibration holds out half the input phases and is checked against
-//! independent game audio. Nothing in this filter depends on cartridge data.
+//! Reproduce with tools/calibrate_audio.py; validate with fresh input phases
+//! and independent game audio. This filter is independent of cartridge data.
 const IMPULSE_COEFFS: [f64; 9219] = [
     -1.07963128174520e-07, 1.95778677929624e-04, 1.93166051854983e-04, 7.72811339349484e-05,
     -4.12518019228259e-05, -5.68483945191716e-05, 6.69475460888017e-05, 1.06397718584235e-04,
@@ -2316,12 +2316,10 @@ pub(super) fn impulse(x: f64) -> f64 {
     let t = position - i as f64;
     let t2 = t * t;
     let t3 = t2 * t;
-    let weights = [
-        (1.0 - t).powi(3) / 6.0,
+    let weights = [(1.0 - t).powi(3) / 6.0,
         (3.0 * t3 - 6.0 * t2 + 4.0) / 6.0,
         (-3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0) / 6.0,
-        t3 / 6.0,
-    ];
+        t3 / 6.0];
     let mut result = 0.0;
     for j in 0..4 { result += IMPULSE_COEFFS[i + j] * weights[j]; }
     result

@@ -117,7 +117,10 @@ impl Triangle {
     fn timer(&mut self) {
         if self.timer == 0 {
             self.timer = self.period;
-            if self.length > 0 && self.linear > 0 {
+            // The reference holds the DAC for the two ultrasonic periods.
+            // Advancing here creates large transients whenever their length
+            // or linear gate closes, despite matching the $4015 flags.
+            if self.length > 0 && self.linear > 0 && self.period > 1 {
                 self.seq = (self.seq + 1) & 31
             }
         } else { self.timer -= 1 }
@@ -427,6 +430,25 @@ impl Apu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ultrasonic_triangle_periods_hold_the_dac_without_disabling_counters() {
+        for period in [0, 1] {
+            let mut apu = Apu::new();
+            apu.write(0x4015, 4);
+            apu.write(0x4008, 255);
+            apu.write(0x400a, period);
+            apu.write(0x400b, 24);
+            apu.write(0x4017, 192);
+            for _ in 0..1000 { apu.tick(); }
+            assert_eq!(apu.tri.output(), 15);
+            assert_eq!(apu.tri.seq, 0);
+            assert_eq!(apu.status(0) & 4, 4);
+            apu.write(0x400a, 2);
+            for _ in 0..30 { apu.tick(); }
+            assert_ne!(apu.tri.seq, 0);
+        }
+    }
 
     #[test]
     fn triangle_gate_changes_after_a_coincident_timer_edge() {

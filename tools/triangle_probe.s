@@ -10,9 +10,12 @@ reset:
  sta $4015
  lda #$ff
  sta $4008
- lda #$70
+.ifndef PERIOD
+PERIOD = $70
+.endif
+ lda #<PERIOD
  sta $400a
- lda #$18
+ lda #($18 | >PERIOD)
  sta $400b
 loop:
  jmp loop

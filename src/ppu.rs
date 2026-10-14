@@ -463,7 +463,7 @@ impl Ppu {
         }
         if self.scan == 261 && d == 1 { self.status &= 31; self.update_nmi() }
         if self.rendering() && line {
-            if d == 0 && self.scan < 240 {
+            if d == 0 && self.scan < 240 && self.ctrl & 16 == 0 {
                 c.address(((self.ctrl as u16 & 16) << 8) +
                             self.tile as u16 * 16 + ((self.v >> 12) & 7), self.ticks)
             }
@@ -512,11 +512,6 @@ impl Ppu {
                 self.v = (self.v & !0x7be0) | (self.t & 0x7be0)
             }
             if (1..=256).contains(&d) && self.scan < 240 { self.evaluate() }
-            if ((4..=256).contains(&d) || (324..=336).contains(&d)) &&
-                    d & 7 == 4 {
-                c.address(((self.ctrl as u16 & 16) << 8) +
-                            self.tile as u16 * 16 + ((self.v >> 12) & 7), self.ticks)
-            }
             if d == 256 || d == 320 {
                 c.address(0x2000 | (self.v & 0xfff), self.ticks)
             }
