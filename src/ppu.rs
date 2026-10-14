@@ -432,6 +432,8 @@ impl Ppu {
             self.late_bus=Some(self.save_evaluation());
             self.restore_evaluation(rendered);
         }
+        // Enabling on dot one misses the cache's start gate, although
+        // clearing and the CPU-visible evaluation bus still run.
         if self.scan>=240 || self.dot<65 || !self.resumed_dot1 {
             self.evaluate_core();
         }
@@ -931,7 +933,7 @@ mod tests {
         rom[..4].copy_from_slice(b"NES\x1a");rom[4]=1;
         let mut c=Cart::load(&rom).unwrap();
         let mut p=Ppu::new();
-        p.scan=100;p.dot=1;p.mask=10;
+        p.scan=100;p.dot=1;p.mask=10;p.render_history=15;
         p.oam.fill(255);
         for n in 0..64 {p.oam[n*4]=200+(n%32) as u8;}
         while p.dot<193 {p.tick(&mut c);}
@@ -948,6 +950,22 @@ mod tests {
         assert_eq!(p.read_reg(&mut c,4),231);
         p.write_reg(&mut c,1,0,50000);
         assert_eq!(p.read_reg(&mut c,4),200);
+    }
+
+    #[test]
+    fn resuming_on_dot_one_keeps_the_sprite_cache_and_overflow_gate_disabled() {
+        let mut rom=vec![0;16+16384];
+        rom[..4].copy_from_slice(b"NES\x1a");rom[4]=1;
+        let mut c=Cart::load(&rom).unwrap();
+        let mut p=Ppu::new();
+        p.scan=160;p.dot=1;p.mask=8;p.eval_done=true;
+        for n in 0..64 {p.oam[n*4..n*4+4].copy_from_slice(&[160,64,0,192]);}
+        while p.dot<150 {p.tick(&mut c);}
+        assert_eq!(p.read_reg(&mut c,2)&32,0);
+        assert_eq!(p.eval_pos,0);
+        assert_eq!(p.late_bus.unwrap().pos,32);
+        while p.scan==160 {p.tick(&mut c);}
+        assert_eq!(p.count,0);
     }
 
     #[test]
@@ -1254,6 +1272,7 @@ mod tests {
         ppu.scan = 239;
         ppu.dot = 1;
         ppu.mask = 20;
+        ppu.render_history = 15;
         ppu.oam.fill(255);
         ppu.oam[..4].copy_from_slice(&[232,0,255,40]);
         while ppu.dot < 257 { ppu.tick(&mut cart); }
@@ -1367,6 +1386,7 @@ mod tests {
         ppu.scan = 61;
         ppu.dot = 1;
         ppu.mask = 0x1e;
+        ppu.render_history = 15;
         ppu.oam.fill(255);
         ppu.oam[..4].copy_from_slice(&[60, 1, 0, 20]);
         while ppu.dot <= 70 { ppu.tick(&mut cart); }

@@ -1889,3 +1889,37 @@ unchangedbest5exact/mean3926; stillpendingIRQbusphaseproblem.
 Refs/probes .out/ppu-disable-inc87 /ppu-enable-inc90; scripts /tmp/ppu_*inc*
 Sourcecurrentlyaccepted89. NewlateenableOAMinitprobes82stillpendingmissing
 2start/5Dot1; doNOTadopt73lateinitwithoutfixing180extraRGBerrors.
+
+## Accepted101: separate late OAM bus/cache state (18:05 UTC)
+Rejected91/95/96/97normalreinit>=65:all82primarybyteprobescorrect,but~150-190
+extraRGBpixels. New15secondaryfetchprobes .out/oam-late-secondary93 prove
+pre65lateenabling copiesCPUsecondarybytes (tile162), AFTER65doesNOTcopy
+secondary (FF); both latecases spritepicturesdrawNONE(t162AND170), 24visual
+.out/oam-late-visual94. Simplecountfreezing/rawcopysuppressionnotcomplete.
+New98 OamEvaluation snapshots: CPU-visiblebus independentlystarts65after
+missedDot1; reusescoreevalvia100byte save/restore, originalrendercache/primary
+OAMADDR/indices/overflowstatus preserved. SecondaryCPU scratchwrites onlyif
+someclearphasewasactive;secondaryreadlatch handlesfetch257..320,prefetch,
+nextDot0. ALL82startbytes exact,15late-secondaryexact,24latevisualexact.
+Mixed16RGB EXACTUNCHANGED10306; oldWRITE16exactunchanged14064;meanAudio
+123.13->119.46;S0firstREAD72111FF->121correct, S12audio nowpeak1;S3stillall
+READexact+50pixels3rows+audiopeak1. Fullfreeze100 allnoDot1caused135additional
+RGB errors,rejected. New12REALREAD2002/all64eligible lateprobes showenabled
+exactDot1 missesrendercache/overflowgate(ref0, old89/98 flag32). Narrow101
+resumed_dot1 onlyblocksrender-coreeval>=65onthatline. CPUbusstillruns. This
+fixesall12statusand8ghostpixelsoriginalfullE/CHR64visual withoutRGBfuzz
+changes. Runtime OamState structs nearPpu haveallneededcounter/secondary
+values; no allocation/growth forlatebus (Option<Copy struct>).
+Threeoldernormal-evalunits startedatDot1withMASKsetbutHistory0, nowspecify
+History15becauseintendedalready-renderingstate. Newtwooriginaltimingunits
+coverlatebefore/afterCLEARsecondaryandDot1overflow/cachegate. 73unitsPASS.
+101all20kgameframes/audiopeak1 exact;30diagimages/countsexactmaxRMS.025peak1;
+215DMAimages/countsexactpeak1. RequiredWASM101built+ABIfullDot1visual5calls+
+S3variedinput25validated; saved .out/ppu101-accepted.rs. CPU/APU62unchanged.
+Fresh32allAPU+DMC+OAMheldout seeds1500..1531,2048events+24trailingframes,
+allimages/countsexactpeak<=2, maxRMS.28271. Total856originalAPUstreams now.
+4096events exceeds32KBgeneratedPRG,reduced2048; noemulatorproblem.
+OAMprobe--read-reg2002 nowincludes2002inreplayer registerset (initialzero
+statusrunwasINVALIDbecausefilterskippedREAD2; reranrealrefsproperly).
+PendingIRQ36mean3926,best5exactUNCHANGE; old30A12CPU/MMC3BG52/SP72allbaseline
+exact. S2remainingOAMREAD21706096vsref98, andPPUwrite-only14k/mixed10kpix.
