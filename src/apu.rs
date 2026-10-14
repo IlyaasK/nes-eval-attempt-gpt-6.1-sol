@@ -424,6 +424,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn power_dmc_phase_matches_reader_and_dac_reference_timestamps() {
+        let mut apu = Apu::new();
+        apu.write(0x4010, 0x4f);
+        apu.write(0x4012, 0x20);
+        apu.write(0x4013, 1);
+        apu.write(0x4015, 16);
+        apu.dmc_supply(255);
+        while apu.cycle < 808 { apu.tick(); }
+        assert!(!apu.dmc_need());
+        apu.tick();
+        assert!(apu.dmc_need());
+        while apu.cycle < 862 { apu.tick(); }
+        assert_eq!(apu.dmc_out, 0);
+        apu.tick();
+        assert_eq!(apu.dmc_out, 2);
+        for _ in 0..54 { apu.tick(); }
+        assert_eq!(apu.dmc_out, 4);
+    }
+
+    #[test]
     fn adjacent_frame_counter_writes_reset_to_the_same_irq_phase() {
         for write_cycle in [16, 17] {
             let mut apu = Apu::new();

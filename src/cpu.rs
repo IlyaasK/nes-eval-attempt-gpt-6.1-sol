@@ -251,9 +251,15 @@ impl Bus {
                 } else { DmaAction::Hold }
             } else { DmaAction::Hold };
             match action {
-                DmaAction::Hold => { self.raw_read(self.dma_halt_addr); }
+                DmaAction::Hold => {
+                    // A repeated read can affect peripherals, but a DMA
+                    // setup/alignment clock does not replace the bus latch.
+                    let open = self.open;
+                    self.raw_read(self.dma_halt_addr);
+                    self.open = open;
+                }
                 DmaAction::OamGet(a) => {
-                    self.oam_latch = self.raw_read(a);
+                    self.oam_latch = self.raw_dma_read(a);
                     self.oam_have_data = true;
                 }
                 DmaAction::OamPut(v) => {
@@ -265,7 +271,7 @@ impl Bus {
                     if self.oam_index == 256 { self.oam_active = false; }
                 }
                 DmaAction::DmcGet(a) => {
-                    let v = self.raw_read(a);
+                    let v = self.raw_dma_read(a);
                     self.apu.dmc_supply(v);
                     self.dmc_active = false;
                     self.dmc_stage = None;
@@ -324,6 +330,23 @@ impl Bus {
         self.open = v;
         v
     }
+    fn raw_dma_read(&mut self, a: u16) -> u8 {
+        // External RAM, cartridge and PPU decode the DMA address. The
+        // internal 2A03 register decoder instead keeps the halted CPU's
+        // high address bits and takes only the DMA address's low five bits.
+        let external = if (0x4000..=0x401f).contains(&a) {
+            self.open
+        } else { self.raw_read(a) };
+        let internal = (self.dma_halt_addr & 0xffe0) | (a & 31);
+        self.open = external;
+        let value = match internal {
+            0x4015..=0x4017 => self.raw_read(internal),
+            _ => external,
+        };
+        self.open = value;
+        value
+    }
+
     fn raw_write(&mut self, a: u16, v: u8) {
 
         #[cfg(feature="trace")]
@@ -917,6 +940,121 @@ mod branch_interrupt_tests {
             assert!(!nes.cpu.nmi_pending);
             for _ in 0..3 { nes.clock(); }
             assert!(nes.cpu.nmi_pending);
+        }
+    }
+}
+
+#[cfg(test)]
+mod dmc_dma_tests {
+    use super::*;
+
+    fn fixture(delay: Option<usize>) -> (Nes, u16) {
+        let mut rom = vec![0; 16 + 32768];
+        rom[..4].copy_from_slice(b"NES\x1a");
+        rom[4] = 2;
+        let mut code = vec![
+            0x78,
+            0xa9, 0x40, 0x8d, 0x17, 0x40,
+            0xa9, 0x4f, 0x8d, 0x10, 0x40,
+            0xa9, 0x00, 0x8d, 0x11, 0x40,
+            0xa9, 0x20, 0x8d, 0x12, 0x40,
+            0xa9, 0x01, 0x8d, 0x13, 0x40,
+            0xa9, 0x10, 0x8d, 0x15, 0x40,
+            0xa9, 0x7f, 0x8d, 0x11, 0x40,
+        ];
+        if let Some(delay) = delay {
+            let mut count = (delay - 1) / 5;
+            let mut remainder = delay - (5 * count + 1);
+            if remainder == 1 { count -= 1; remainder += 5; }
+            code.extend_from_slice(&[0xa2, count as u8, 0xca, 0xd0, 0xfd]);
+            if remainder & 1 != 0 {
+                code.extend_from_slice(&[0x24, 0]);
+                remainder -= 3;
+            }
+            code.extend(std::iter::repeat_n(0xea, remainder / 2));
+            code.extend_from_slice(&[0xa9, 2, 0x8d, 0x14, 0x40,
+                0xa9, 0x7e, 0x8d, 0x11, 0x40]);
+        }
+        let end = 0x8000 + code.len() as u16;
+        code.extend_from_slice(&[0x4c, end as u8, (end >> 8) as u8]);
+        rom[16..16 + code.len()].copy_from_slice(&code);
+        rom[16 + 0x4800..16 + 0x4811].fill(255);
+        rom[16 + 32764..16 + 32766].copy_from_slice(&0x8000u16.to_le_bytes());
+        (Nes::new(Cart::load(&rom).unwrap()), end)
+    }
+
+    #[test]
+    fn first_dmc_load_waits_for_get_in_the_second_following_apu_cycle() {
+        let (mut nes, end) = fixture(None);
+        while nes.bus.borrow().cycles < 49 { nes.clock(); }
+        assert_eq!(nes.bus.borrow().apu.dmc_left, 17);
+        assert!(!nes.bus.borrow().dmc_active);
+        nes.clock();
+        assert!(nes.bus.borrow().dmc_active);
+        nes.clock();
+        assert_eq!(nes.bus.borrow().apu.dmc_left, 17);
+        nes.clock();
+        assert_eq!(nes.bus.borrow().cycles, 52);
+        assert_eq!(nes.bus.borrow().apu.dmc_left, 16);
+        assert_eq!(nes.bus.borrow().apu.dmc_addr, 0xc801);
+        while nes.bus.borrow().cycles < 55 { nes.clock(); }
+        assert_eq!(nes.pc(), end);
+        assert_eq!(nes.bus.borrow().open, 127);
+    }
+
+    #[test]
+    fn reload_overlaps_oam_setup_and_preserves_get_put_parity() {
+        let (mut nes, _) = fixture(Some(401));
+        for i in 0..256 { nes.bus.borrow_mut().ram[512 + i] = i as u8; }
+        while nes.bus.borrow().dma.is_none() { nes.clock(); }
+        let start = nes.bus.borrow().cycles;
+        assert_eq!(start, 462);
+        nes.clock();
+        let mut puts = 0;
+        while nes.bus.borrow().oam_active {
+            let address = nes.bus.borrow().ppu.oam_addr;
+            nes.clock();
+            let b = nes.bus.borrow();
+            if b.ppu.oam_addr != address {
+                assert_eq!(b.cycles & 1, 1);
+                puts += 1;
+            }
+        }
+        assert_eq!(puts, 256);
+        assert_eq!(nes.bus.borrow().cycles - start, 515);
+        for i in 0..256 { assert_eq!(nes.bus.borrow().ppu.oam[i], i as u8); }
+    }
+
+    #[test]
+    fn oam_io_decode_and_alignment_preserve_the_observed_bus_data() {
+        let (mut nes, end) = fixture(Some(401));
+        let mut b = nes.bus.borrow_mut();
+        let pos = b.cart.prg.windows(5)
+            .position(|bytes| bytes == [0xa9, 2, 0x8d, 0x14, 0x40]).unwrap();
+        b.cart.prg[pos + 1] = 0x40;
+        b.keys = 1;
+        b.raw_write(0x4016, 1);
+        drop(b);
+        while nes.pc() != end { nes.clock(); }
+        let b = nes.bus.borrow();
+        // The held CPU is fetching from ROM, so $4015/$4016/$4017 do not
+        // decode during DMA from page $40. The prior $4014 data floats.
+        assert_eq!(&b.ppu.oam[..32], &[0x40; 32]);
+        // A DMC fetch drives $FF later in the transfer. The following OAM
+        // alignment read must not replace it with the next CPU opcode.
+        assert_eq!(b.ppu.oam[255], 255);
+    }
+
+    #[test]
+    fn dma_tail_timings_match_the_measured_reference_markers() {
+        for (delay, expected) in [
+            (231, 815), (232, 817), (233, 817), (234, 818), (235, 818),
+            (236, 818), (237, 818), (238, 821), (239, 821), (240, 823),
+        ] {
+            let (mut nes, end) = fixture(Some(delay));
+            while nes.pc() != end { nes.clock(); }
+            assert_eq!(nes.bus.borrow().cycles, expected, "delay {delay}");
+            assert_eq!(nes.bus.borrow().open, 126);
         }
     }
 }
