@@ -98,6 +98,7 @@ struct Triangle {
     r: [u8; 4],
     enable: bool,
     length: u8,
+    pending_length: Option<u8>,
     period: u16,
     timer: u16,
     seq: u8,
@@ -115,12 +116,17 @@ impl Triangle {
         if self.seq < 16 { 15 - self.seq } else { self.seq - 16 }
     }
     fn timer(&mut self) {
+        // A register reload reaches the length counter after this clock's
+        // sequencer gate is sampled, before the frame counter clocks it.
+        let old_length = self.length;
+        if let Some(length) = self.pending_length.take() { self.length = length; }
+        // Ultrasonic periods hold the DAC and the remaining divider count.
+        // A later audible period resumes that count, rather than starting
+        // at whichever phase a silently running tiny divider would reach.
+        if self.period <= 1 { return }
         if self.timer == 0 {
             self.timer = self.period;
-            // The reference holds the DAC for the two ultrasonic periods.
-            // Advancing here creates large transients whenever their length
-            // or linear gate closes, despite matching the $4015 flags.
-            if self.length > 0 && self.linear > 0 && self.period > 1 {
+            if old_length > 0 && self.linear > 0 {
                 self.seq = (self.seq + 1) & 31
             }
         } else { self.timer -= 1 }
@@ -131,7 +137,7 @@ impl Triangle {
             2 => self.period = (self.period & 0x700) | v as u16,
             3 => {
                 self.period = (self.period & 255) | ((v as u16 & 7) << 8);
-                if self.enable { self.length = LEN[(v >> 3) as usize] }
+                if self.enable { self.pending_length = Some(LEN[(v >> 3) as usize]); }
                 self.reload = true
             }
             _ => {}
@@ -290,7 +296,7 @@ impl Apu {
                     if !self.pulse[i].enable { self.pulse[i].length = 0 }
                 }
                 self.tri.enable = v & 4 != 0;
-                if !self.tri.enable { self.tri.length = 0 }
+                if !self.tri.enable { self.tri.length = 0; self.tri.pending_length = None; }
                 self.noise.enable = v & 8 != 0;
                 if !self.noise.enable { self.noise.length = 0 }
                 if v & 16 == 0 {
@@ -486,6 +492,50 @@ mod tests {
         }
     }
 
+    #[test]
+    fn triangle_length_reload_reaches_the_gate_after_a_coincident_timer_edge() {
+        // Original seeded streams restore a stopped triangle exactly one
+        //clock before its divider expires. The reference skips that edge,
+        //loads the new divider, then advances after the whole new period.
+        let mut tri = Triangle::default();
+        tri.enable = true;
+        tri.linear = 16;
+        tri.seq = 24;
+        tri.period = 2;
+        tri.timer = 0;
+        tri.write(3,215);
+        assert_eq!(tri.period,1794);
+        tri.timer();
+        assert_eq!(tri.output(),8);
+        assert!(tri.length>0);
+        for _ in 0..1794 { tri.timer(); }
+        assert_eq!(tri.output(),8);
+        tri.timer();
+        assert_eq!(tri.output(),9);
+    }
+    #[test]
+    fn ultrasonic_triangle_resumes_the_remaining_audible_divider() {
+        // Isolated original register stream: lowering period84 to1 with
+        //62 clocks remaining, then restoring257 after727 clocks, produces
+        //the next DAC step63 clocks after restoration in the reference.
+        let mut tri = Triangle::default();
+        tri.enable = true;
+        tri.length = 10;
+        tri.linear = 1;
+        tri.period = 84;
+        tri.timer = 62;
+        tri.seq = 21;
+        tri.write(2,1);
+        for _ in 0..727 { tri.timer(); }
+        assert_eq!(tri.timer,62);
+        assert_eq!(tri.output(),5);
+        tri.write(3,97);
+        assert_eq!(tri.period,257);
+        for _ in 0..62 { tri.timer(); }
+        assert_eq!(tri.output(),5);
+        tri.timer();
+        assert_eq!(tri.output(),6);
+    }
     #[test]
     fn triangle_gate_changes_after_a_coincident_timer_edge() {
         // Original cycle-accounted ROMs align an 85-cycle triangle divider

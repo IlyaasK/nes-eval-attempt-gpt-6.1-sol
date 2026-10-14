@@ -850,3 +850,24 @@ calibrationprioronly, notcompiled. tools/fit_phase_tables.py now supports
 DAC96/127 files, --smooth .05 --interval-iterations 2000; fresh700writes and
 nearestbelowall256phases heldoutbeforeadoption. ExactunityDC preserved.
 Sourcecontainsnogame recognition or hardcodedoutput streams.
+
+## MMC1 consecutive reset fixed; new randomized APU discrepancy active
+
+tools/mmc1_rmw_reset_probe.py original realINC/ROR/RRA/ASL/ROL serialwrites
+plus0..4pendingbits: 19/30failedbefore, all30nowexact afterallowingD7reset on
+thesecondconsecutivewrite (D0dataremainsignored). Unitaddedcoversfiveprefix
+states plusFF->00 reset-first/data-secondnegativecase. 42units pass; required
+wasm rebuilt. RHDEvaried5000allframesexact/audioRMS.06150peak1afterMMC1fix.
+Wasm/native newDSP MMC3bottommarker FB-1199743547/audio-495375058,43276samples.
+
+Newtools/apu_random_probe.py realcycle-accountedstreams ofpulse/tri/noise,
+noDMC (noDMA timestampambiguity). Eightseeds ~30..37frames: sevenfailaudio,
+onepasspeak1; seed0RMS361.7peak5921firstlargePCM848. Isolatingchannels by
+rebuilding originalstream: pulse1 .0501peak1,pulse2 .0565peak1,noise .1302peak1,
+triangle RMS357.7peak5922firstPCM847. Earlysequence: lowtriangleperiod1 at
+CPU34025; restorehighbitsat34752 ($400b97 => period257), then disable34979.
+Nativeholdsseq5duringultrasonic, advances6at34754; reference differsafter
+restore. Investigating via generictools/predict_mix_audio.py toinfer actual
+referenceedge andheldDAC fromknownpriorMIXevents. Native productAPU notyet
+changed. Currenttracebinary .out/run-trace stilloldDSP/pre-OAM butAPUunchanged
+forNROM andusedonlyeventtrace, notvalidation. src/audio productiontable4.
