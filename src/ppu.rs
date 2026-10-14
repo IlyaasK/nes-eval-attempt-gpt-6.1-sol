@@ -63,6 +63,9 @@ pub struct Ppu {
     eval_latch: u8,
     eval_value: u8,
     eval_done: bool,
+    eval_initialized: bool,
+    clear_active: bool,
+    late_count: Option<usize>,
     post_eval_valid: bool,
     post_eval_n: u8,
     post_eval_latch: u8,
@@ -129,6 +132,9 @@ impl Ppu {
             eval_latch: 0,
             eval_value: 0,
             eval_done: false,
+            eval_initialized: false,
+            clear_active: false,
+            late_count: None,
             post_eval_valid: false,
             post_eval_n: 0,
             post_eval_latch: 0,
@@ -383,6 +389,7 @@ impl Ppu {
             (self.athi & 0xff00) | if self.attr & 2 != 0 { 255 } else { 0 }
     }
     fn initialize_evaluation(&mut self) {
+        self.eval_initialized=true;
         self.eval_pos=0;
         self.eval_n=self.oam_addr>>2;
         self.eval_m=self.oam_addr&3;
@@ -392,8 +399,13 @@ impl Ppu {
     }
     fn evaluate(&mut self) {
         let d=self.dot;
-        if d==1 {self.initialize_evaluation();}
+        if self.scan<240 && d>=65 && !self.eval_initialized {
+            let old_count=self.count;
+            self.initialize_evaluation();
+            self.late_count=Some(old_count);
+        }
         if d <= 64 {
+            self.clear_active=true;
             if d & 1 == 0 {
                 self.secondary[(d / 2 - 1) as usize] = 255;
                 self.secondary_cpu[(d / 2 - 1) as usize] = 255;
@@ -443,8 +455,10 @@ impl Ppu {
             if self.eval_pos&3 == 0 {
                 // Y is written before the range test. A rejected sprite
                 // leaves its Y in the next otherwise empty secondary slot.
-                self.secondary[self.eval_pos]=self.eval_value;
-                self.secondary_cpu[self.eval_pos]=self.eval_latch;
+                if self.late_count.is_none() || self.clear_active {
+                    self.secondary[self.eval_pos]=self.eval_value;
+                    self.secondary_cpu[self.eval_pos]=self.eval_latch;
+                }
                 if in_range {
                     self.indices[self.eval_pos / 4] = self.eval_n;
                     self.eval_pos += 1;
@@ -455,8 +469,10 @@ impl Ppu {
                     self.eval_m=0;
                 }
             } else {
-                self.secondary[self.eval_pos] = self.eval_value;
-                self.secondary_cpu[self.eval_pos] = self.eval_latch;
+                if self.late_count.is_none() || self.clear_active {
+                    self.secondary[self.eval_pos] = self.eval_value;
+                    self.secondary_cpu[self.eval_pos] = self.eval_latch;
+                }
                 self.eval_pos += 1;
                 self.eval_m += 1;
                 if self.eval_m == 4 {
@@ -549,7 +565,7 @@ impl Ppu {
         // The reference latches the next line's sprite count for the final
         // pixel, while its shift registers still contain the current line.
         let visible_count = if x == 255 {
-            self.count.min(self.eval_pos / 4)
+            self.count.min(self.late_count.unwrap_or(self.eval_pos / 4))
         } else { self.count };
         for s in &self.sprites[..visible_count] {
             if s.x == 0 {
@@ -612,6 +628,8 @@ impl Ppu {
         let d = self.dot;
         if d==257 {self.sprite_fetched=false;}
         if d==1 {
+            self.eval_initialized=false;self.clear_active=false;self.late_count=None;
+            if self.render_history&1!=0 {self.initialize_evaluation();}
             self.post_eval_valid=false;
         }
         let just_enabled = std::mem::take(&mut self.render_just_enabled);
@@ -703,7 +721,7 @@ impl Ppu {
             if d == 257 {
                 self.load_shift();
                 self.next_count =
-                    if self.scan == 261 { 0 } else { self.eval_pos / 4 };
+                    if self.scan == 261 { 0 } else { self.late_count.unwrap_or(self.eval_pos / 4) };
                 self.next = [Sprite::default(); 8]
             }
             if (1..=256).contains(&d) { self.evaluate() }
