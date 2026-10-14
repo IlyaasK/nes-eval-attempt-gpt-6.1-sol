@@ -209,7 +209,8 @@ impl Ppu {
                     if self.rendering_line() && self.dot >= 2 && self.dot <= 64
                         {
                         255
-                    } else if self.rendering_line() && self.dot <= 321 {
+                    } else if self.rendering_line() && self.dot <= 321
+                        && !((self.scan == 261 || self.scan == 0) && self.dot == 0) {
                         self.eval_latch
                     } else {
                         self.oam_read(self.oam_addr)
@@ -319,7 +320,22 @@ impl Ppu {
             self.eval_latch = 255;
             return
         }
-        if d > 256 || self.eval_done { return }
+        if d > 256 { return }
+        if self.scan == 261 {
+            // Pre-render walks primary Y bytes without selecting sprites.
+            // CPU writes do not redirect the walk. After it wraps, the
+            // primary bus follows OAMADDR again until sprite fetch starts.
+            if d & 1 != 0 {
+                self.eval_latch = self.oam_read(if self.eval_done { self.oam_addr }
+                    else { self.eval_n.wrapping_mul(4) });
+            } else if !self.eval_done {
+                self.eval_n += 1;
+                if self.eval_n >= 64 { self.eval_n = 0; self.eval_done = true; }
+                if !self.eval_done { self.oam_addr = self.eval_n.wrapping_mul(4); }
+            }
+            return
+        }
+        if self.eval_done { return }
         if d & 1 != 0 {
             self.eval_latch = self.oam_read(self.eval_n.wrapping_mul(4) | self.eval_m);
             return
@@ -530,17 +546,7 @@ impl Ppu {
             if self.scan == 261 && (280..=304).contains(&d) {
                 self.v = (self.v & !0x7be0) | (self.t & 0x7be0)
             }
-            if (1..=256).contains(&d) {
-                if self.scan < 240 || d <= 64 {
-                    // The pre-render line clears secondary OAM too, even
-                    // though it does not select sprites for visibleline0.
-                    self.evaluate()
-                } else {
-                    // During pre-render's evaluation interval primary OAM
-                    // remains on the bus without advancing its evaluator.
-                    self.eval_latch = self.oam_read(self.oam_addr);
-                }
-            }
+            if (1..=256).contains(&d) { self.evaluate() }
             if ((6..=256).contains(&d) || (326..=336).contains(&d))
                 && (d & 7 == 6 || d & 7 == 0)
             {
@@ -673,18 +679,38 @@ mod tests {
         assert_eq!(&ppu.secondary[..4], &[232,0,227,40]);
         ppu.scan = 261;
         ppu.dot = 0;
+        ppu.oam_addr = 2;
+        assert_eq!(ppu.read_reg(&mut cart,4),227); // Vblank's primary bus.
+        ppu.oam_addr = 0;
         ppu.tick(&mut cart);
         assert_eq!(ppu.read_reg(&mut cart,4),232);
         while ppu.dot < 65 { ppu.tick(&mut cart); }
         assert!(ppu.secondary.iter().all(|&v|v==255));
         assert_eq!(ppu.read_reg(&mut cart,4),255);
+        ppu.oam_addr = 2;
         ppu.tick(&mut cart);
-        assert_eq!(ppu.read_reg(&mut cart,4),232);
+        assert_eq!(ppu.read_reg(&mut cart,4),232); // Internalwalk ignores$2003.
+        while ppu.dot < 128 { ppu.tick(&mut cart); }
+        assert_eq!(ppu.read_reg(&mut cart,4),255); // Out-of-rangeprimaryY.
+        while ppu.dot < 194 { ppu.tick(&mut cart); }
+        assert_eq!(ppu.read_reg(&mut cart,4),255);
+        assert_eq!(ppu.oam_addr,252); // The final Y address is retained.
+        ppu.oam_addr = 0;
         while ppu.dot < 257 { ppu.tick(&mut cart); }
         assert_eq!(ppu.read_reg(&mut cart,4),232);
         ppu.tick(&mut cart);
         assert_eq!(ppu.read_reg(&mut cart,4),255);
         assert_eq!(ppu.next_count,0);
+        ppu.scan = 261;
+        ppu.dot = 0;
+        while ppu.dot < 250 { ppu.tick(&mut cart); }
+        ppu.oam_addr = 2;
+        ppu.tick(&mut cart);
+        ppu.tick(&mut cart);
+        assert_eq!(ppu.read_reg(&mut cart,4),227);
+        ppu.scan = 0;
+        ppu.dot = 0;
+        assert_eq!(ppu.read_reg(&mut cart,4),227); // Frameboundaryprimarybus.
     }
 
     #[test]

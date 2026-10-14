@@ -1,3 +1,5 @@
+//! Calibration prior for tools/fit_phase_tables.py. Production uses the
+//! phase tables in audio_phase_table.rs. Keep this prior for reproducibility.
 //! Generic reconstruction filter calibrated with isolated DAC impulses.
 //! Uniform cubic B-spline coefficients, spacing 1/256 sample, origin -18.
 //! Reproduce with tools/calibrate_audio.py; validate with fresh input phases

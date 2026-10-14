@@ -789,3 +789,64 @@ noevidenceforcoarselevelquantization. A naive second-moment estimatebiased
 byADCquantizationtail; doNOTchangeglobalmixgainbasedonit. Nextfit direct
 perphase FIR tables withmultipleamplitudes/PCMconstraints, heldoutdata.
 CurrentvalidatedDSP unchanged; SRCgenericcubic spline .2RMS games.
+
+## Pre-render OAM clear, primary walk, and dot-zero bus validated
+
+41unit tests pass; required wasm built with acceptedPPU changes. Secondary
+OAM clears on pre-render1..64 as on visible lines. The initial hypothesis
+that primary address holds65..256 was disproved by a wider original probe.
+Pre-render walks Y bytes65..192 without selecting sprites; $2003writes do
+notredirect thatwalk. At completion it retains lastY address252, and bus
+then follows CPU OAMADDRwrites again. Currentdot0 of pre-render/scanline0
+uses primarybus, while currentdot0 of othervisiblelines retains previous
+secondarylatch. tools/oam_render_read_probe.py now supports CPUaddress and
+early render enable, and corrected missing2000 in replay register filter.
+All130 dot/address phase probes and48 completion-edge probes now match
+oracle finalvideo exactly. .out/oam-address-prerender/fixed-results.json,
+.out/oam-wrap-prerender/fixed-results.json. Initial10pre-renderprobes also
+exact. Unit coversclear, activewalkignoringwrites, retainedlastaddress,
+latewrites andprimarybusatframeboundary. 30diagnostics afterfirstwalkchange
+stillallframes/counts exact, maxaudioRMS.030205peak2; finalretentionchange
+awaits fullregression (noobservedunrelatedtimingchanges).
+
+Original MMC3 bottomline8x16 even-tile sprite marker probes CTRL32/40/48/56,
+LATCH1/8. RMS.38-.61peak4 corresponds FIRerror; strictnative-timestamp
+DAC-onlyoracle replay CTRL32/LATCH8 has RMSE0/peak0 againstoriginaloracle,
+provingnewclear keepsreference IRQcycles. Fixture in
+ tools/mmc3_irq_marker_probe.s -D BOTTOM_SPRITES=1.
+
+Audio genericphase-table calibration: tools/fit_phase_tables.py reconstructs
+33taps for256quantizedphases usingMIDDAC96/127, holdout16/64, finite support,
+unityDC andperiodicphasecorrections. tools/predict_dac_audio.py forwardmodel
+witholdprior reproduces nativeDAC96 PCM EXACT (all1574708samples), validating
+coordinate/filtermath. Directfit .out/filter-mid/tables2.npz reducesfresh700
+DACwrite RMS.15036->.12234. Trialfourgame2400calls audio improved:
+RHDE .03342->.02818, FF .11805->.09699, Stallar .21102->.17347, RFKunchanged;
+alltrialpeaks1. Prior-tableconversion nativeStallar600 audio byte-exact.
+Secondfit adds actualPCMtruncationinterval optimization (L-BFGS, DCprojected)
+.out/filter-mid/tables4.npz: freshRMS.12379peak1, boundary-all256RMS.00623peak1
+versusold.01432peak4. It is being validated natively now. Sourceaudio.rs and
+src/audio_phase_table.rs currentlyEXPERIMENTALtables4; wasm remainsaccepted
+oldDSP plusvalidatedPPU. Backupoldaudio .out/audio-before-phase-table.rs,
+trialbinarytables2 .out/run-phase-fit, oldDSPnewPPU .out/run-prerender-walk.
+Do notadopttable4 until freshgame anddiagnostic comparisons complete.
+
+## Direct phase audio FIR adopted after independent validation
+
+Table4 is now ACCEPTED productionDSP. All20000 varied5000 gameplayimages
+match andsamplesmatch3668206each. RMS/peak: RFK .000738/1 (unchanged), RHDE
+.06150/1 (previous.07371/2), FF .09738/1 (previous.11829/1), Stallar .16647/1
+(previous.20196/3). .out/filter-mid/four-games.json. All30diagnostics final
+images/counts exact, maximumRMS.025014peak1 (previous.030205peak2).
+.out/phase-four-diagnostic-comparison.json. Thisalso verifies finalpre-render
+OAMaddressretentionchanges. 41units+ABI pass; requiredwasmbuild running.
+Production source audio.rs uses33directtaps per256absoluteCPUphase. Whole
+phaseuses255oneoutputsampleearlier, withguaranteedzero discardedfirsttap.
+Noresetphase subtraction/interpolation neededat runtime; oldFIR conversion
+was byte-exact nativeStallar600 andDAC96all1574708samples. Filters, mixed
+levels andstartupCDFunchanged. Oldaudio_kernel.rs retainedas documented
+calibrationprioronly, notcompiled. tools/fit_phase_tables.py now supports
+--rust-output toexportproductioncoefficientformat. Reproduce with MIDphase
+DAC96/127 files, --smooth .05 --interval-iterations 2000; fresh700writes and
+nearestbelowall256phases heldoutbeforeadoption. ExactunityDC preserved.
+Sourcecontainsnogame recognition or hardcodedoutput streams.

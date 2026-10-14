@@ -3,8 +3,8 @@
 const CPU_HZ: u64 = 1_789_773;
 const CLOCK_SCALE: u64 = CPU_HZ * 12;
 const PHASES: usize = 256;
-const TAPS: usize = 34;
-#[path = "audio_kernel.rs"]
+const TAPS: usize = 33;
+#[path = "audio_phase_table.rs"]
 mod kernel;
 pub struct Resampler {
     kernels: Vec<[f64; TAPS]>,
@@ -23,16 +23,7 @@ pub struct Resampler {
 }
 impl Resampler {
     pub fn new() -> Self {
-        let mut kernels = vec![[0.0; TAPS]; PHASES + 1];
-        for (p, taps) in kernels.iter_mut().enumerate() {
-            let phase = p as f64 / PHASES as f64;
-            let mut sum = 0.0;
-            for (i, tap) in taps.iter_mut().enumerate() {
-                *tap = kernel::impulse(i as f64 - 16.0 - phase);
-                sum += *tap;
-            }
-            for tap in taps { *tap /= sum; }
-        }
+        let kernels = kernel::TABLES.to_vec();
         Self {
             kernels,
             ring: [0.0; 128],
@@ -53,9 +44,6 @@ impl Resampler {
         let delta = level - self.last;
         if delta != 0.0 {
             self.last = level;
-            let clock =
-                (self.phase + 44100 * 12) as f64 / CLOCK_SCALE as f64 -
-                    (8.0 * 44100.0 * 12.0 / CLOCK_SCALE as f64);
             if !self.started {
                 // Fixed power-on clock phase. These are the cumulative taps
                 // of the startup impulse after the 17-sample output delay.
@@ -75,27 +63,20 @@ impl Resampler {
                 }
                 self.started = true;
             } else {
-                // Quantize before removing the reset cycles. The table
+                // Use the absolute CPU phase, including reset cycles. The table
                 // lookup rounds its scaled fractional phase to f32 first;
                 // this matters at representable cycles just below a phase
                 // boundary. At an exact whole sample the reference's clock
                 // conversion approaches from below, selecting phase255 of
                 // the preceding sample. Original 256-phase DAC probes
                 // protect both numerical edge cases independently of APU.
-                let source_phase = self.phase as f64 / CLOCK_SCALE as f64;
                 let quantized = Self::quantized_phase(self.phase);
-                let center = 17.0 + clock - 1.334
-                    + quantized - source_phase + 1.0 / 512.0;
-                let base = center.floor() as isize - 16;
-                let pos = (center - center.floor()) * PHASES as f64;
-                let p = pos as usize;
-                let f = pos - p as f64;
+                let p = if self.phase == 0 { 255 } else { (quantized * 256.0) as usize };
+                let base = if self.phase == 0 { -1isize } else { 0isize };
                 for i in 0..TAPS {
                     let offset = base + i as isize;
                     if offset >= 0 {
-                        let k = self.kernels[p][i]
-                            + f * (self.kernels[p + 1][i] - self.kernels[p][i]);
-                        self.ring[(self.head + offset as usize) & 127] += delta * k;
+                        self.ring[(self.head + offset as usize) & 127] += delta * self.kernels[p][i];
                     }
                 }
             }

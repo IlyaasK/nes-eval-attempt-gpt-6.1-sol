@@ -160,7 +160,9 @@ impl Cart {
         }
         match self.mapper {
             1 => {
-                if self.last_write != u64::MAX && cycle == self.last_write + 1
+                // D0 is inhibited on a consecutive write; D7 resets the
+                // serial latch even on the second write of INC/RRA/ASL.
+                if v & 128 == 0 && self.last_write != u64::MAX && cycle == self.last_write + 1
                     {
                     return
                 }
@@ -321,6 +323,25 @@ mod tests {
     }
     fn serial(c: &mut Cart, a: u16, v: u8, cycle: &mut u64) {
         for bit in 0..5 { c.write(a, (v >> bit) & 1, *cycle); *cycle += 2 }
+    }
+    #[test]
+    fn mmc1_reset_is_accepted_on_the_second_rmw_write_but_serial_data_is_not() {
+        for prefix in 0..5 {
+            let mut c = Cart::load(&image(1, 4, 0)).unwrap();
+            let mut cycle = 20;
+            for _ in 0..prefix { c.write(0xe000,0,cycle); cycle += 2; }
+            c.write(0xcf00,127,cycle);
+            c.write(0xcf00,128,cycle+1);
+            cycle += 4;
+            serial(&mut c,0xe000,2,&mut cycle);
+            assert_eq!(c.read(0x8000,0),4);
+        }
+        let mut c = Cart::load(&image(1,4,0)).unwrap();
+        c.write(0xcf00,255,20);
+        c.write(0xcf00,0,21);
+        let mut cycle = 24;
+        serial(&mut c,0xe000,2,&mut cycle);
+        assert_eq!(c.read(0x8000,0),4);
     }
     #[test]
     fn nrom_16k_mirrors_and_ram_starts_zero() {

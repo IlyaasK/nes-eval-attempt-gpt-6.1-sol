@@ -8,8 +8,10 @@ import argparse,pathlib,re,wave
 import numpy as np
 from scipy.signal import lfilter
 from scipy.sparse.linalg import LinearOperator,lsqr
+from scipy.optimize import minimize
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('root');p.add_argument('output');p.add_argument('--iterations',type=int,default=250)
+p.add_argument('root');p.add_argument('output');p.add_argument('--rust-output');p.add_argument('--iterations',type=int,default=250)
+p.add_argument('--interval-iterations',type=int,default=0)
 p.add_argument('--smooth',type=float,default=.02);p.add_argument('--ridge',type=float,default=.002)
 a=p.parse_args();root=pathlib.Path(a.root);N=384;T=33
 r=44100/1789773;r1=.9872590350155737;r2=.9392351762287491;alpha=.8639403657579068
@@ -89,6 +91,41 @@ fit=lsqr(op,rhs,atol=1e-10,btol=1e-10,iter_lim=a.iterations,show=True)
 k=prior+fit[0].reshape(256,T)*mask
 # Exact unity DC preserves the integrator for arbitrary infinite streams.
 k/=k.sum(axis=1)[:,None]
-report(k,'fit');print('delta max',np.abs(k-prior).max(),'rms',np.sqrt(np.mean((k-prior)**2)),flush=True)
+report(k,'fit')
+# Minimize violations of the actual truncation intervals, rather than fitting
+# invented sub-integer observations at each interval's midpoint.
+scale=max(gamma[v] for v in train);gain=np.array([gamma[v]/scale for v in train])
+data=np.array([waves[v] for v in train]);lo=np.where(data>0,data,np.where(data<0,data-1,-1))+.0001
+hi=np.where(data>0,data+1,np.where(data<0,data,1))-.0001
+lo/=scale;hi/=scale
+if a.interval_iterations:
+ def project(x):
+  d=x.reshape(256,T)*mask
+  return d-d.sum(axis=1)[:,None]/mask.sum(axis=1)[:,None]*mask
+ def objective(x):
+  d=project(x);prediction=forward_audio(prior+d)[None,:,:]*gain[:,None,None]
+  residual=prediction-np.clip(prediction,lo,hi)
+  sd=smooth(d)
+  cost=.5*(np.sum(residual**2)+sw**2*np.sum(sd**2)+rw**2*np.sum(d*d))
+  grad=adj_audio(np.sum(residual*gain[:,None,None],axis=0))+sw**2*smooth(sd)+rw**2*d
+  return cost,project(grad).ravel()
+ count=[0]
+ def callback(x):
+  count[0]+=1
+  if count[0]%100==0:print('interval iteration',count[0],'loss',objective(x)[0],flush=True)
+ result=minimize(objective,(k-prior).ravel(),jac=True,method='L-BFGS-B',callback=callback,
+  options=dict(maxiter=a.interval_iterations,ftol=1e-14,gtol=1e-12,maxcor=30))
+ print('interval optimization',result.message,'loss',result.fun,flush=True)
+ k=prior+project(result.x);report(k,'interval-fit')
+print('delta max' ,np.abs(k-prior).max(),'rms',np.sqrt(np.mean((k-prior)**2)),flush=True)
 np.savez(a.output,tables=k,prior=prior,cycles=cycles,heads=heads,q=q,shift=shift)
 k.astype('<f8').tofile(str(a.output)+'.bin')
+
+if a.rust_output:
+ text='//! Generic 256-phase, 33-tap reconstruction FIR calibrated in PCM space.\n'
+ text+='//! Reproduce with tools/fit_phase_tables.py, MIDphase DAC96/127 training\n'
+ text+='//! and DAC16/64 held out, finite support, unity DC, --smooth '+str(a.smooth)+'\n'
+ text+='//! and --interval-iterations '+str(a.interval_iterations)+'. Validate with fresh patterns/games.\n'
+ text+='pub(super) const TABLES: [[f64;33];256] = [\n'
+ text+=''.join('    ['+', '.join(f'{v:.17e}' for v in row)+'],\n' for row in k)+'];\n'
+ pathlib.Path(a.rust_output).write_text(text)
