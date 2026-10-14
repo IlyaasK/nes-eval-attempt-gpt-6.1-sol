@@ -2,7 +2,8 @@
 
 The default register set isolates noise. --registers 4011,4017 replays DAC
 markers, and --offset permits measuring reference write timing in CPU cycles.
-Every generated instruction and branch-page penalty is accounted for.
+READ rows capture a CPU register read through two DAC levels. Every
+generated instruction and branch-page penalty is accounted for.
 """
 import argparse
 import pathlib
@@ -17,12 +18,14 @@ args = parser.parse_args()
 registers = {int(a, 16) for a in args.registers.split(',')}
 rows = []
 for line in pathlib.Path(args.trace).read_text().splitlines():
-    if not line.startswith('WRITE '):
+    words = line.split()
+    if not words or words[0] not in ['WRITE','READ']:
         continue
-    _, cycle, addr, value = line.split()
-    cycle, addr, value = int(cycle), int(addr, 16), int(value)
+    kind,cycle,addr = words[:3]
+    cycle,addr = int(cycle),int(addr,16)
+    value = int(words[3]) if kind=='WRITE' else None
     if addr in registers and cycle < args.max_cycles:
-        rows.append((cycle + (args.offset if cycle > 10000 else 0), addr, value))
+        rows.append((cycle + (args.offset if cycle > 10000 else 0),addr,value))
 
 code = bytearray([0x78])  # SEI; first fetch follows the eight reset cycles.
 clock = 10
@@ -85,6 +88,19 @@ for target, addr, value in rows:
             emit([0xa9, v, 0x85, v], 5)
         accumulator = 255
         initialized = True
+    if value is None:
+        left = target-clock-4
+        assert left>=0 and left!=1, (target,clock,'read requires a representable delay')
+        delay(left)
+        emit([0xad,addr&255,addr>>8],4)
+        assert clock==target
+        # Two DAC levels expose all eight input bits without disturbing
+        # PPU memory. The second level includes the status register's D7.
+        emit([0x8d,0x11,0x40],4)
+        emit([0x4a],2)
+        emit([0x8d,0x11,0x40],4)
+        accumulator = None
+        continue
     load = [] if accumulator == value else [0xa9, value]
     required = 4 + (2 if load else 0)
     left = target - clock - required

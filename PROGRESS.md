@@ -1435,3 +1435,25 @@ RequireMM3switch48/staticmarkercheckthenadopt57/buildWASM ifbroadpasses.
 Currentdefaultnative57(nontrace), requiredwasm55. CPU55/PPU54acceptedbackups
 .out/cpu55-accepted.rs,.out/ppu54-accepted.rs. FailedparallelCPUtrialsaved
 .out/cpu-abort-parallel-get-trial.rs; doNOTrestore/adopt it.
+
+## Accepted57 artifact built; ongoingmapper stress
+
+56+57 combined all20k variedframes/images/counts exact andunchangedaudio
+peak1;30diagnostics allfinalimages/counts exact(maxRMS.025014peak1);
+57units allpass. 52oldMMC3BGswitch refs (60calls) samplecounts exact,
+maxRMS.70555peak3. RequiredWASM57/defaultnative57 built. ABIoverlap e638-o650-n1
+8calls FB-522363451/audio1007670759/5119samples44100 (nativehashmatches).
+PPUinitial16stress badframes211->135, pixels53604->17780. Stillmanyfixesneeded.
+
+New30MMC3 CPU-address/PPUDATA A12 originalfixtures using
+ tools/mmc3_cpu_a12_probe.s: PPUADDR0<->1000,PPUDATAread0FFF->1000,
+NTread2FFF->3000,palette3F00shadowNTread,NTwrite2FFF->3000, latch0/1/8,
+nop0/3. ALLcounts exact andmaxRMS.7555peak3, soCPU-addresspin/forcedblank
+increments alreadymatch. .out/mmc3-cpu-a12/results.json.
+New72fastsprite-table/size CTRLswitch IRQ/DAC markers running
+.out/mmc3-sprite-switch.log. tools/mmc3_irq_marker_probe.s newSWITCH_BIT
+(default16 preservesexistingBGswitch;8/32toggleSPtable/height). Data/address
+latchingmayneedseparatemapperpinphaseunderSPctrlchanges, examineaudio.
+Accepted-source backups .out/cpu55-accepted.rs/.out/ppu54-accepted.rs areOLD;
+current57 isaccepted. Failedparallel/no-stall model NEVERadopted (retained
+under .out/cpu-abort-parallel-get-trial.rs forhistoryonly).
