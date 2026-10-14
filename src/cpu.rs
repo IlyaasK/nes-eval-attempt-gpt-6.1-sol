@@ -171,6 +171,9 @@ pub struct Bus {
     oam_latch: u8,
     oam_have_data: bool,
     dmc_aborted_get: bool,
+    dmc_parallel_get: bool,
+    dmc_aborted_dummy: bool,
+    oam_dummy_left: u8,
     dmc_pending_at: Option<u64>,
     dmc_stage: Option<DmcDmaStage>,
     last_dmc_get: Option<u64>,
@@ -207,6 +210,9 @@ impl Bus {
             oam_latch: 0,
             oam_have_data: false,
             dmc_aborted_get: false,
+            dmc_parallel_get: false,
+            dmc_aborted_dummy: false,
+            oam_dummy_left: 0,
             dmc_pending_at: None,
             dmc_stage: None,
             last_dmc_get: None,
@@ -246,6 +252,8 @@ impl Bus {
                 self.oam_page = page;
                 self.oam_index = 0;
                 self.oam_have_data = false;
+                self.oam_dummy_left = if self.dmc_aborted_dummy {2} else {0};
+                self.dmc_aborted_dummy = false;
                 // An aborted reload can retain its get after the CPU
                 // resumes. OAM arbitration exposes that read, stealing
                 // its first get slot and filling the sample buffer.
@@ -263,6 +271,8 @@ impl Bus {
                 && self.dmc_pending_at.is_some_and(|t| t <= next_cycle) {
                 self.dmc_pending_at = None;
                 self.dmc_aborted_get = false;
+                self.dmc_parallel_get = false;
+                self.dmc_aborted_dummy = false;
                 self.dmc_active = true;
                 self.dmc_stage = Some(DmcDmaStage::Dummy);
                 dmc_started = true;
@@ -274,6 +284,9 @@ impl Bus {
         #[cfg(feature="trace")]
         if dmc_started {
             eprintln!("DMC_HALT {} {:04x}", self.cycles, self.dma_halt_addr);
+        }
+        if aborted_reload && self.oam_active && !self.dmc_active && !oam_started {
+            self.dmc_parallel_get = true;
         }
         self.last_dma_cycle = self.oam_active || self.dmc_active;
         if aborted_reload && cpu_read && !self.last_dma_cycle {
@@ -293,7 +306,10 @@ impl Bus {
             let action = if dmc_get {
                 DmaAction::DmcGet(self.apu.dmc_addr)
             } else if self.oam_active && !oam_started {
-                if get_cycle && !self.oam_have_data {
+                if self.oam_dummy_left != 0 {
+                    self.oam_dummy_left -= 1;
+                    DmaAction::Hold
+                } else if get_cycle && !self.oam_have_data {
                     DmaAction::OamGet((self.oam_page as u16) << 8 | self.oam_index)
                 } else if !get_cycle && self.oam_have_data {
                     DmaAction::OamPut(self.oam_latch)
@@ -320,22 +336,12 @@ impl Bus {
                     self.oam_index += 1;
                     if self.oam_index == 256 { self.oam_active = false; }
                 }
-                DmaAction::DmcGet(a) => {
-                    self.dmc_open_before_get = self.open;
-                    let v = self.raw_dma_read(a);
-                    self.last_dmc_get = Some(self.cycles);
-                    self.dmc_register_selector = Some(self.dmc_open_before_get);
-                    #[cfg(feature="trace")]
-                    eprintln!("DMC_GET {} {:04x} {:04x} {}", self.cycles,
-                        a, self.dma_halt_addr, v);
-                    self.apu.dmc_supply(v);
-                    if self.apu.dmc_need() {
-                        self.dmc_pending_at = Some(self.cycles + 1);
-                    }
-                    self.dmc_active = false;
-                    self.dmc_forced = false;
-                    self.dmc_stage = None;
-                }
+                DmaAction::DmcGet(a) => self.read_dmc_sample(a),
+            }
+            if self.dmc_parallel_get && get_cycle && !dmc_get {
+                self.dmc_parallel_get = false;
+                self.read_dmc_sample(self.apu.dmc_addr);
+                self.dmc_aborted_dummy = true;
             }
             if !dmc_started && matches!(self.dmc_stage, Some(DmcDmaStage::Dummy)) {
                 self.dmc_stage = Some(DmcDmaStage::Get);
@@ -365,6 +371,22 @@ impl Bus {
         };
         self.result = Some(value);
         true
+    }
+    fn read_dmc_sample(&mut self,a:u16) {
+        self.dmc_open_before_get = self.open;
+        let v = self.raw_dma_read(a);
+        self.last_dmc_get = Some(self.cycles);
+        self.dmc_register_selector = Some(self.dmc_open_before_get);
+        #[cfg(feature="trace")]
+        eprintln!("DMC_GET {} {:04x} {:04x} {}", self.cycles,
+            a, self.dma_halt_addr, v);
+        self.apu.dmc_supply(v);
+        if self.apu.dmc_need() {
+            self.dmc_pending_at = Some(self.cycles + 1);
+        }
+        self.dmc_active = false;
+        self.dmc_forced = false;
+        self.dmc_stage = None;
     }
     fn tick(&mut self) {
         self.last_irq =

@@ -1335,3 +1335,46 @@ supportsretainedreads). NormalDMCstartclearsflag. Currentlybuilddone and96
 random+48videos rerunning .out/aborted-oam-get-trial.log. DoNOTbuildwasmtrial.
 AcceptedCPUbackup .out/cpu-before-aborted-oam-dummy.rs (PPU54acceptedseparately).
 Holdtrialbackup .out/cpu-aborted-oam-hold-trial.rs; fixedbinarieshold/getnamed.
+
+## Accepted CPU55 retained GET — new corner still unresolved
+
+ActualDMCGET insteadofheld2OAMclocks fixes ALL96freshstreams (old3outliers
+nowtiny); 88earlierstreams alsoallcounts/pass maxRMS.269522peak2. Newaudio
+regressiontool originallyusedold.frames scheduleswhichomit3DMC/6OAMtrailing
+referencecalls; correctedcallcountfromreferenceWAVduration. Noemuissue.
+All48abortedOAM controls nowimagesexact;6restart/no-abortcontrols exact
+(normalDMCgetclearsretainedflag). All215sideeffects imagesexact maxpeak1.
+20kvariedgameplay allimages/countsexact unchangedaudiopeak1.30diagnostics
+allimages/countsexact maxRMS.025014peak1. ALL55units pass. SourceCPU55 isnow
+ACCEPTED, requiredWASM55build complete. ABI64callseed409 FB-1199743547,
+audio-180297963,46212samples44100 (nativehashcheckmatches). PPU54acceptedtoo.
+
+Unitprotectsstop807 aborted809, OAMwrite810 thenretainedGET812(C801), left0
+safe, addrC802,515OAMclocks (513+2). Fieldrenamed dmc_aborted_get. Actualget
+stealsfirstOAMGET; dummy/HALToverlapOAMsetup, supplyfillsbufevenreaderleft0.
+
+Additional20implicitfeedback/OAMprobes .out/dmc-abort-during-oam:18pass,
+2fail enable638(initialGET644timer2beforebit647), OAM650(alreadyactiveat
+abortedbyte809), optionalsecondOAM1600. NormalCPUabortedHALTflag setonlywhen
+OAMinactive; currentCPUignoresabortwhenoamActive. FirstOAMvideoPPUMASKedge
+matches(n0), ONLYnextrow0published3pix differ; audioRMS5.7929peak217. With
+secondOAM alsoCPUedge6px (+2CPUmissing), audioSAME5.7929peak217. Soabortwhile
+OAMactive may retainflagforNEXT OAM butalsoaffectoutputbuf withoutstalling
+currentOAM. NeedfitextraDMCbytewave viaoracleDAC-onlyreplay. Job33686 running
+.out/dmc-oam-dac-replay patterns nativeA5 vs+A5/5A etc. NativeonlyA5replay
+oracle-to-oracle RMS5.792869peak217 matches currentfail. Extra5Apatternresult
+pending; doNOTguessimplicitactive-OAMbehavior beforestrictaudio comparison.
+Acceptednative .out/run-aborted-oam-get-trial; latestdefaultnative55nontrace.
+
+Active-OAM strictaudio result: oracleDAC-only replay nativeA5 firstpacket
+RMS5.792869peak217 vsfailure; adding EXACTnextsample5A atpacket1241, firstbit
+1295(GPIODAC1294), is ORACLE-TO-ORACLE PCM EXACT0/0. So referencefetches5A
+whileOAMactive despiteleft0. NoCPUdebt onfirstOAM (onlypublishedrow0pixels
+varycallback). WithsecondOAM1600 CPU+2 missing(edge6px), butsameWAV aswithout
+second. Thisimpliesactive-OAMabortfillsbufwithoutstallingcurrentOAM AND
+retains2cycle statefornextOAM (possiblydummyonly,noadditionalbuf). Need
+spritecopiedbytes fixture tocheckreferencealreadyperformsGETbutdropsoneOAM
+slot vsparallelread. /tmp/dmc_oam_copied_bytes.py buildsCHRROMtilesencoding
+all256OAMbytes, sourcepage80(nonzeroROM), captures2004intoNTafterDMA. Controls
+636/640 vsabortedfeedback638. Job81193 running .out/dmc-oam-copied-bytes.
+Currentsource55acceptedunchanged whileinvestigating thisnew56corner.

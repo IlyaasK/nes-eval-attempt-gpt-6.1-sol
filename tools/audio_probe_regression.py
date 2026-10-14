@@ -2,9 +2,13 @@
 import argparse,pathlib,subprocess,os,json,numpy as np,wave,concurrent.futures
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('--binary',default='target/release/examples/run');p.add_argument('--metadata',default='.out/dmc-latch-random-regression.json');p.add_argument('--output',default='.out/audio-probe-regression.json');a=p.parse_args()
 def run(item):
- rom=pathlib.Path(item['rom']);frames=int(rom.with_suffix('.frames').read_text());dest=rom.parent/(rom.stem+'-audio-regression');subprocess.run([a.binary,str(rom),str(frames),str(dest)],env=dict(os.environ,LAST_ONLY='1'),stdout=subprocess.DEVNULL,check=True)
- n=np.fromfile(dest/'audio.raw','<i2').astype(float)
+ rom=pathlib.Path(item['rom'])
  with wave.open(str(rom.with_suffix('.wav'))) as w:r=np.frombuffer(w.readframes(w.getnframes()),'<i2').astype(float)
+ # Older DMC/OAM probes ran extra trailing frames beyond their generated
+ # schedule. Recover the actual call count from the retained reference.
+ frames=item.get('frames',round((len(r)+17)*1789773/(44100*29780.5))+1)
+ dest=rom.parent/(rom.stem+'-audio-regression');subprocess.run([a.binary,str(rom),str(frames),str(dest)],env=dict(os.environ,LAST_ONLY='1'),stdout=subprocess.DEVNULL,check=True)
+ n=np.fromfile(dest/'audio.raw','<i2').astype(float)
  row=dict(rom=str(rom),samples=len(n),ref_samples=len(r))
  if len(n)==len(r):e=n-r;row.update(rms=float(np.sqrt(np.mean(e*e))),peak=float(abs(e).max()))
  ref=rom.parent/(rom.stem+'-ref')/f'frame_{frames-1:05}.idx'
