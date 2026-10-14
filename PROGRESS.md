@@ -1755,3 +1755,22 @@ READ72111dot140Y34 missingbecauseenable72080dot47 vsDot1maskedoff. Oldfailed
 firsteval>=65 resetchangedCPUADDR snapshot timing;before65only maybecorrect.
 Sourcecurrent65trial,64backup .out/ppu64-before-clear-resume.rs. Buildpending;
 need4captures+oldWRITE16/mixed16RGBA comparingto64 thencontrolledmaskphase.
+
+## OAM66/67 ongoing (artifact still64)
+65firstClearinit changedfewREADsbutRGBworse(+39oldWRITE/+27mixed) notadopted.
+Controlled54OAMstart originals tools/oam_start_probe.py/.out/oam-start-grid:
+Addr0..5 ×writebeforeDot1/clear/after65 ×renderAlways/disable-enable. Reveals
+Dot1start preservesphysicalLOWbits m; writesduringnormalclearIGNORED, but
+late-enablemissedDot1 samplesADDRat65. Addr1preLine firstbyte160(native200),
+partialclearAddr1late firstbyte161(nativeFF). New66 initializesatDot1if
+PREVDOT_renderHistory1 true (enableonDot1misses), otherwisefirsteval>=65
+visible. m=OAMADDR&3; selection/copy-phase uses eval_pos&3 independentphysm;
+physm increments/carriesnthroughunaligned4-byte copy. 54cases66fails4only
+ADDR2 laterreads227vsrefFF: firstattrY162 correct thenrejectedY mustresetm0.
+67currentTRIAL setsm0 onYreject(nonfullsecondary), allAlignedunchanged.
+Root .out/ppu-reject-m67-trial.rs/native .out/run-reject-m67. 66unitsbefore67
+passed +215DMA66exact. 16RGB66worse(old17780->18429);need67results/realphase.
+NewpatternedOAMstart18cases address1/2 firstREAD77770..778 patterned+repeat
+unaligned eligible2ndentry distinguishesmresetatcopyfinishvsrejectedY.
+Toolsargs --patterned,--repeat-unaligned,--first-read, dir .out/oam-start-pattern.
+CurrentCPU/APU62unchanged, WASM64stable. No66/67adoptionyet.
