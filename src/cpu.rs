@@ -171,6 +171,7 @@ pub struct Bus {
     oam_latch: u8,
     oam_have_data: bool,
     dmc_aborted_get: bool,
+    dmc_aborted_addr: Option<u16>,
     dmc_pending_at: Option<u64>,
     dmc_stage: Option<DmcDmaStage>,
     last_dmc_get: Option<u64>,
@@ -207,6 +208,7 @@ impl Bus {
             oam_latch: 0,
             oam_have_data: false,
             dmc_aborted_get: false,
+            dmc_aborted_addr: None,
             dmc_pending_at: None,
             dmc_stage: None,
             last_dmc_get: None,
@@ -292,6 +294,7 @@ impl Bus {
             if let CycleOp::Read(a) = op { self.dma_halt_addr = a; }
             self.last_dma_cycle = true;
             self.dmc_aborted_get = true;
+            self.dmc_aborted_addr = Some(self.apu.dmc_addr);
             let open = self.open;
             self.raw_read(self.dma_halt_addr);
             self.open = open;
@@ -331,6 +334,7 @@ impl Bus {
                     if self.oam_index == 256 { self.oam_active = false; }
                 }
                 DmaAction::DmcGet(a) => {
+                    let a = self.dmc_aborted_addr.take().unwrap_or(a);
                     self.dmc_open_before_get = self.open;
                     let v = self.raw_dma_read(a);
                     self.last_dmc_get = Some(self.cycles);

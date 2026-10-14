@@ -49,7 +49,6 @@ pub struct Ppu {
     sprite_fetch_valid: [bool;8],
     secondary: [u8; 32],
     indices: [u8; 8],
-    eval_initialized: bool,
     eval_n: u8,
     eval_m: u8,
     eval_pos: usize,
@@ -104,7 +103,6 @@ impl Ppu {
             sprite_fetch_valid: [false;8],
             secondary: [255; 32],
             indices: [255; 8],
-            eval_initialized: false,
             eval_n: 0,
             eval_m: 0,
             eval_pos: 0,
@@ -335,8 +333,7 @@ impl Ppu {
     }
     fn evaluate(&mut self) {
         let d = self.dot;
-        if d == 1 || (d >= 65 && self.scan != 261 && !self.eval_initialized) {
-            self.eval_initialized = true;
+        if d == 1 {
             self.eval_pos = 0;
             self.eval_n = self.oam_addr >> 2;
             self.eval_m = 0;
@@ -364,14 +361,7 @@ impl Ppu {
             }
             return
         }
-        if self.eval_done {
-            if d & 1 != 0 { self.eval_latch = self.oam_read(self.eval_n*4); }
-            else {
-                self.eval_n = self.eval_n.wrapping_add(1) & 63;
-                self.eval_latch = 255;
-            }
-            return;
-        }
+        if self.eval_done { return }
         if d & 1 != 0 {
             self.eval_latch = self.oam_read(self.eval_n.wrapping_mul(4) | self.eval_m);
             return
@@ -531,7 +521,6 @@ impl Ppu {
             self.skip_render = self.rendering()
         }
         let line = self.scan < 240 || self.scan == 261;
-        if line && d==1 { self.eval_initialized = false; }
         if self.scan == 241 && d == 1 {
             if !self.suppress { self.status |= 128 }
             self.suppress = false;

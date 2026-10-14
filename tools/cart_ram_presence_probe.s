@@ -43,6 +43,10 @@ inner:
  bne outer
  lda #$2a
  sta $6000
+.ifdef ALIAS_OFFSET
+ lda #17
+ sta $6000+ALIAS_OFFSET
+.endif
  lda $6000
  sta $00
  sta $4011
