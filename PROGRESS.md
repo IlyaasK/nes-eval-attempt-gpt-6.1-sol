@@ -1804,3 +1804,30 @@ readedgepollwithoutold30offrenderregression. Sourcecurrent69IRQtrial,
 backups .out/{ppu,cpu}-read-edge-irq69-trial.rs/native .out/run-read-edge-irq69.
 ArtifactWASM64stable. Need36IRQ/old30 results beforeadopt/reject; thenresume
 OAM68snapshot. AllCPU/APU62baselinebackups .out/cpu64-accepted.rs/.
+
+## Accepted OAM76 (2026-10-14 17:12 UTC)
+Rejected IRQ69:36readloop meanRMS4116 vsaccepted63 3926, zeroexactcases
+vs5;old30stablebutnoimprovement. CPU restoredaccepted64(runtime62).
+OAM70physicalm-wrappedpartialcopy WRONG:pattern9/18 fail;visual170test
+provesfourbytesneeded. Actualbug: internal eval copiesRAWattribute170,
+CPUreadreturnsMASKED162. New dual secondary/secondary_cpu andeval_value
+preserverawcopyandCPUbus. InitOAMADDRm preserved,semanticcopyphasepos&3;
+Yrejectandfourbytefinishresetm0;physicalcarryadvancesn. RetainsoldDot1init,
+late-enable66/68/73 all54/18/10bytephasecorrectBUT180additionalRGBerrors,
+so lateinitSTILLnotadopted. Full73 plusraw/CPUbus all12visual/all82byteprobes
+exact. Conservative74 preserves oldlateinit, fixesbeforeDot1unmatchedOAM1
+and2starts, rawspriteprobe. Oldwritepixels17780->17787; mixed28236->28224,
+audio224.16->223.74. ALLfourcapturedseedbytes unchangedfromaccepted64.
+New76CPUread4renderdot322..340 returnssecondary_cpu[0] (BGprefetch)
+ratherthanprimaryOAMAO0. This fixes13capturedREADmismatches(no new ones)
+inS0..2;S3stillallREADexact; mixedaudioaverage223.74->162.05.
+Accepted76 tests67passedincludingoriginalrawunalignedpixels+CPUbus test.
+All215DMAimages/counts exactpeak1;30diagnosticimages/countsexactmaxRMS.025
+peak1. 74 fourgames×5000all20kframeexactpeak1;76READ4only change.
+RequiredWASM76builtnoRUSTFLAGS, ABI5unaligned+25S3input/drain validated,
+logs .out/abi76-{unaligned,input-read}.log. Saved .out/{ppu,cpu}76-accepted.rs.
+Sourcecurrently76accepted. ToolsOAMstartnewvisual/visual-tile/eligible-next.
+EvenNT/ATTRDATAfetch_addr75experiment (saved .out/ppu-even-fetch75-trial.rs)
+hasNOdifferencesinmixed16/captured4/115scroll/138bufferphaseprobes, kept
+isolated/notadopted. Next remaining:lateenableOAM init, fulloverflow even
+bus/indices, PPUREADbufferS1byte378623 native33ref226;MMC3continuousREADIRQ.
