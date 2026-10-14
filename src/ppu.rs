@@ -33,7 +33,9 @@ pub struct Ppu {
     athi: u16,
     tile: u8,
     attr: u8,
+    // Vertical scroll strobes see the rendering enable two dots later.
     render_history: u8,
+    // A new background tile becomes transferable after its low fetch.
     bg_ready: bool,
     render_just_enabled: bool,
     bg_fetch_low: u8,
@@ -526,6 +528,8 @@ impl Ppu {
             }
             if (2..=257).contains(&d) || (322..=337).contains(&d) {
                 self.lo <<= 1;
+                // The upper bitplane shifts in logical ones. Its fill
+                // input responds one dot after rendering is enabled.
                 self.hi = (self.hi << 1) | !just_enabled as u16;
                 self.atlo <<= 1;
                 self.athi <<= 1
@@ -539,6 +543,8 @@ impl Ppu {
                         self.read_fetch(c,a);
                     }
                     1 => {
+                        // The external latch holds the previous dot's low
+                        // byte; the upper address pins follow live v.
                         let a = 0x2000 | (self.v & 0xf00) | self.bg_fetch_low as u16;
                         self.tile = self.nt[c.nt_index(a)];
                     }
@@ -578,18 +584,11 @@ impl Ppu {
                     _ => unreachable!()
                 }
             }
-            if d == 256 && self.render_history & 2 != 0 { self.inc_y() }
             if d == 257 {
                 self.load_shift();
-                if self.render_history & 2 != 0 {
-                    self.v = (self.v & !0x41f) | (self.t & 0x41f);
-                }
                 self.next_count =
                     if self.scan == 261 { 0 } else { self.eval_pos / 4 };
                 self.next = [Sprite::default(); 8]
-            }
-            if self.scan == 261 && (280..=304).contains(&d) && self.render_history & 2 != 0 {
-                self.v = (self.v & !0x7be0) | (self.t & 0x7be0)
             }
             if (1..=256).contains(&d) { self.evaluate() }
             if ((6..=256).contains(&d) || (326..=336).contains(&d))
@@ -650,6 +649,13 @@ impl Ppu {
             }
             if d == 339 { self.read_mem(c, 0x2000 | (self.v & 0xfff)); }
         }
+        if line && self.render_history & 2 != 0 {
+            if d == 256 { self.inc_y() }
+            if d == 257 { self.v = (self.v & !0x41f) | (self.t & 0x41f); }
+            if self.scan == 261 && (280..=304).contains(&d) {
+                self.v = (self.v & !0x7be0) | (self.t & 0x7be0);
+            }
+        }
         if self.scan < 240 && (1..=256).contains(&d) { self.render_pixel() }
         self.render_history = ((self.render_history << 1) | self.rendering() as u8) & 15;
         self.ticks += 1;
@@ -676,6 +682,60 @@ impl Ppu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enabling_background_after_its_low_fetch_exposes_the_shift_fill_bits() {
+        for value in [0,255] {
+            let mut rom = vec![0;16+16384+8192];
+            rom[..4].copy_from_slice(b"NES\x1a");
+            rom[4] = 1; rom[5] = 1;
+            rom[16+16384..].fill(value);
+            let mut c = Cart::load(&rom).unwrap();
+            let mut p = Ppu::new();
+            p.scan = 193; p.dot = 198;
+            p.pal[0] = 1; p.pal[2] = 3; p.pal[3] = 4;
+            p.write_reg(&mut c,1,10,51784);
+            while p.dot <= 224 { p.tick(&mut c); }
+            assert_eq!(&p.fb[193*256+208..193*256+213], &[1;5]);
+            assert_eq!(&p.fb[193*256+213..193*256+216], &[3;3]);
+            assert_eq!(&p.fb[193*256+216..193*256+224],
+                &[if value==0 {1} else {4};8]);
+        }
+    }
+
+    #[test]
+    fn mid_render_address_transfer_delays_v_and_preserves_the_fetch_low_byte() {
+        let mut rom = vec![0;16+16384];
+        rom[..4].copy_from_slice(b"NES\x1a"); rom[4] = 1;
+        let mut c = Cart::load(&rom).unwrap();
+        let mut p = Ppu::new();
+        p.scan = 223; p.dot = 121; p.ticks = 1000;
+        p.mask = 10; p.render_history = 15; p.v = 0x2000;
+        p.nt[c.nt_index(0x2000)] = 5;
+        p.nt[c.nt_index(0x23c0)] = 0x81;
+        p.write_reg(&mut c,6,0x22,84929);
+        p.write_reg(&mut c,6,0x4f,84949);
+        assert_eq!(p.v,0x2000);
+        p.tick(&mut c); p.tick(&mut c); p.tick(&mut c);
+        assert_eq!(p.v,0x2000);
+        assert_eq!(p.tile,5);
+        p.tick(&mut c);
+        assert_eq!(p.v,0x224f);
+        assert_eq!(p.attr,2);
+    }
+
+    #[test]
+    fn enabling_at_the_last_visible_dot_misses_the_vertical_increment() {
+        let mut rom = vec![0;16+16384];
+        rom[..4].copy_from_slice(b"NES\x1a"); rom[4] = 1;
+        let mut c = Cart::load(&rom).unwrap();
+        let mut p = Ppu::new();
+        p.scan = 159; p.dot = 255; p.v = 0x2000; p.t = 0x2010;
+        p.write_reg(&mut c,1,30,77719);
+        p.tick(&mut c); p.tick(&mut c); p.tick(&mut c);
+        assert_eq!(p.v,0x2010);
+        assert_eq!(p.dot,258);
+    }
 
     #[test]
     fn oam_data_follows_primary_clear_and_secondary_fetch_bus_phases() {

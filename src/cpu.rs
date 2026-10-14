@@ -227,6 +227,11 @@ impl Bus {
         let cpu_read = matches!(op, CycleOp::Read(_));
         let aborted_reload = self.apu.dmc_abort_at == Some(next_cycle);
         if aborted_reload { self.apu.dmc_abort_at = None; }
+        #[cfg(feature="trace")]
+        if aborted_reload {
+            let (a,kind) = match op { CycleOp::Read(a) => (a,"read"), CycleOp::Write(a,_) => (a,"write") };
+            eprintln!("DMC_ABORT {} {} {:04x} oam={} dmc={}",self.cycles,kind,a,self.oam_active,self.dmc_active);
+        }
         let was_halted = self.oam_active || self.dmc_active;
         let mut oam_started = false;
         let mut dmc_started = false;

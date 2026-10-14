@@ -1242,3 +1242,50 @@ Original16CPU2006phaseprobes .out/ppu-address-grid show3best:13exact, residual
 Needisolate remainingfetchphase behavior, espNT/attribute/address latching.
 .doNOToverwritewasmwithtrial. .out/run-dma-frame-finish51 isacceptednative.
 Further64audio/DMA streams400..4631600events running .out/apu-dma-heldout52.log.
+
+## Current trials and new audio failures
+
+BG two-stage fetch with low-byte latch and live high bits fixes ALL16CPU
+2006phaseprobes .out/ppu-address-grid (3dotVtransfer), unlikeearlier3failed.
+Multiplex4x5000games: RHDE/FF/Stallar allimages exact; RFK5frames3px each due
+Vtransferdelaywhileblank. ChangedVdelay to rendering_line only, blankimmediate.
+
+Maskrender delay4 forALLfetch/eval FAILED (firstlinecoarseXoff1tile). Reverted.
+Instead delayedvertical increment/horizontalcopy2PPUdots (incXstillimmediate)
+fixesoriginals6row160..165943pixels, leaving1initialpixel. Firstenable must
+shiftregisters IMMEDIATELY butskipconstant1 insertion ONLY onfirstenableclock,
+not skipwhole shifts; fixesremaininginitialpixel. CurrentppuTRIALsource has
+multiplex, render-onlyVdelay3, bg_ready gate, highconstant1, firstenableconst0,
+2dotvertical/horizontal timing. AcceptedPPU remains .out/ppu-frame51-accepted.rs.
+Latestnative .out/run-enable-shift-trial; wasmstillaccepted51. No newchanges
+accepted pendingbroader/targetedPPUvalidation. 16randomPPUstreams substantially
+improved butstillmanyerrors; bg_ready gate matches ALL16CHRFFactivationphases.
+
+Fresh64APU+DMC+OAM1600eventstreams400..463:61smallRMS; failures400/408/409
+RMS163/68/663. ALLsamplecounts/finalblankimagesmatch. DMC-onlyisolatesALSO
+fail atsamefirsttimes, so CPU/DMCpipeline issue propagatesallchannels.
+409firsterror188718audio~GPIO8native188667. RedirectGPIO8toPPUMASK at188667
+had0diff becauseedgeinHBLANK (NOTproofCPUclock); nextwrite1891784008val97
+redirectedto2001 ISvisible: nativeedge row92x110/refx116 (6px), missing2CPU.
+DMCstop at1655344015=2, r0=85(loop+rate5), timer2 bits1 bufferSome0 left237;
+nativeoneabortedclock165537, referenceperhapsfull3clock=>debt2. NO active
+DMCGET since163508, nextaudiochange188667 afterlongsilence, so mismatchmay
+originate165537 wellbeforetwoOAMDMAs187457/187995. Investigateexplicitstop
+nearACTIVEpacket vsfirstsilentpacket, loop/rate/value differences. Normalized
+loop/no-loop stops804..812 first809packet running .out/dmc-loop-stop-edge.log.
+
+Latest PPU-stage trial broadresults: all20k gameplay frames ALLexact including
+RFK afterblankV immediate; all30diagnostics images/countsexact maxRMS.025014
+peak1; all215DMA-sideeffects imagesexact maxpeak1. Added3PPUunitcases;
+53/54passed butfirstactivationbitmapexpectedunitfailed (investigate setup
+vsrealROM phase). Sourcestilltrial. A combinedshell mistakenly builtwasm
+trial despiteunitfailure; restoreaccepted51untilunitresolved/adoption.
+
+409factorvariations length1vs15,loopoff/on,stopvalue0vs2 allsameinitialaudio
+error. PreSTOPmarker1655174008val67 ->2001 isvisibleandEXACT. PostSTOPmarker
+189178 +2CPU debt confirmed. 60normalizedrate5/15,loop/no-loop,packet0/1/2
+stops−4..0 allvideoexact. Missingruledependsadditionalprehistory orbusphase,
+notjustloop,outputactive,remainingsamplelength, orother4015channel enables.
+Nativeabortedpulse165537 isREAD8BF1 (min4241 isREAD8037). Tracefeature now
+logsDMC_ABORT CPUaddress/type. Debugcopy .out/run-trace-abort52. Defaultnative
+currentlytrace (restore beforelaunchingtoolsusingdefaultbinary).
