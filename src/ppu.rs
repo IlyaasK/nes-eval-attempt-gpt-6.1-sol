@@ -203,7 +203,7 @@ impl Ppu {
                     if self.rendering_line() && self.dot >= 1 && self.dot <= 64
                         {
                         255
-                    } else if self.rendering_line() && self.dot <= 256 {
+                    } else if self.rendering_line() && self.dot <= 321 {
                         self.eval_latch
                     } else {
                         let v = self.oam[self.oam_addr as usize];
@@ -547,6 +547,11 @@ impl Ppu {
                 self.oam_addr = 0;
                 let i = ((d - 257) / 8) as usize;
                 let p = (d - 257) & 7;
+                // Secondary OAM drives $2004 during sprite fetch. Each
+                // slot presents Y/tile/attribute/X on its first four dots,
+                // then holds X for the remaining four. CPU reads see the
+                // most recently completed dot's value.
+                self.eval_latch = self.secondary[i * 4 + (p as usize).min(3)];
                 match p {
                     0 | 2 => { self.read_fetch(c, 0x2000 | (self.v & 0xfff)); }
                     4 => {
