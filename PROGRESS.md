@@ -705,3 +705,59 @@ Mirrored200FY15also tested tocheckcanonical-address filtering. NOP/branch/
 opcodefetchmaynotreplace theprevious meaningful dataperipheral callback.
 24early-storeprobes .out/ppu-dmc-store/results.json allmatchbecauseCPUbus
 valuewas0, not7. Full37sourcebuildcontainsNOtentativelatePPUbusfixyet.
+
+## General DMC register selector replaces address-phase approximation
+
+The late discrepancy isresolvedbyonegeneralbus rule, notROM/data-specific
+magic. AtDMCGET recordthepreGETCPU busbyteas a selector. The nextnormal
+CPU I/O read consumesit; ifitscanonicalregisternumbermatches, performone
+extra read (controllerOE releasedbetweenextra/real). RAM/ROM reads and
+writes leaveitpending. PPUmirrors consumeitwithoutrepeat. CanonicalPPU
+2000..2007useindices0..7; APUREG4000..401Fuse0..31. Capture comesfrom
+existingdmc_open_before_get. Bus.dmc_register_selector replacesold
+dmc_read_after_address andCPU.finished_address (bothremoved). NoCPUclocks
+added. Existing4015floatingbit5preGET rule stillnecessary forheldstatus.
+
+Proof: lateCPUbus7 ->next2007repeats; bus2 ->next2002repeats/clearsvblank,
+evenwhenVBLsetAFTERDMA andbeforethelaterCPUread. Bus22->later4016 deletes
+onebit;bus21->later4015clearsframeIRQ. NonmatchingfirstI/Oreads consume
+selector; RAM BIT0/6000doesnot. PPUMirror200F/2207/3FFFdoesnotrepeat. Indexed
+2000+X7mustNOTrepeat becausepreGEToperandlow0 differsreg7; oldaddress-phase
+approximationdidrepeat. Originalselectmatrixandfull snapshotvariations
+confirmallofthis. Backup .out/cpu-before-dmc-register-selector.rs.
+
+215originalcollisionROMs nowallmatchfinalimages (.out/dmc-selector-
+regression.json), maximumaudioRMS .16013. DenseDMCstream120frames5layouts
+all87304samples, RMS .320627/.309243/.299936/.289501/.282816, peak2each
+(previous4layoutpeaks136/137 andRMS6.7..9.3).
+.out/ppu-dmc-stream/selector-results.json. 38units pass; wasmrebuilt.
+NewunitcoversselectorretentionacrossRAM andconsumptionbyI/O; previousCPU
+unitnowalso testsindexednomatchandmirroredportnegativecases. FullABI+
+wasmstreamhashcheck, fourvaried5000games(allframes), and30diagnostics
+rerunning. Native defaulttraceOFF. CurrentPPU/BUSsourceisacceptednewrule.
+
+Current38unit+ABI andwasmstreamhash checkscompleted: native/wasmFB
+-1199743547,audio -194314846,87304samples for120calls. All20000images
+ofvaried5000replays matchagain; samples3668206each, RMS/peaks unchanged
+RFK .000738/1,RHDE .073714/2,FF .118294/1,Stallar .201956/3. Detailed
+.out/dmc-selector-games.json. All30diagnosticimages/countsalsoexactagain,
+maxaudioRMS .030205peak2 (.out/selector-dmc-diagnostic-comparison.json).
+
+## Implicit one-byte DMC aborted reload fixed, later-chip extra absent
+
+Newtools/dmc_implicit_stop_probe.py loadsonebyte nearbufferempty809, sample
+C800FF/C80100 to distinguish repeated-address late-chipDMA. Enable796..807:
+only800/801 differed (RMS~3.6); allothercasesincluding802/803alreadymatch.
+Reference DOES NOT implement the late-chip unexpected full extra DMA for
+implicitstop at808. DoNOTaddthis fromdocs; explicitstop808/809retainsfull
+request aspreviouslyproved, butimplicitending808doesnot.
+
+APU.supply now schedulesone-clock abortifthenonlooping lastbyte finishes
+withbits1 andtimer1/2. Loopingsamplesdonotqualify. All12originalimplicit
+probesnow RMS<.071peak1; two marker-gap6casesputCPUwriteontheabortedhalt
+clock andalsomatch, provingcancellationonwrite. NewCPUunit actualmarker824
+forenable800 and825forenable802protectsbothabortandnolater-chipfullDMA.
+39units+ABI/wasmbuildchecks running;30diagnostics rerunningafterthischange.
+NativecurrentdefaulttraceOFF. Sourcehasonlyvalidatedchanges, nofixtures
+select-ROMdatabehavior. Nextwork: widerDMCreaderstart/stop/restartand
+IRQ/OAMoverlap timing, OAMevaluationedges, exactgenericFIR/phase/mixer.

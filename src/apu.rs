@@ -340,7 +340,17 @@ impl Apu {
         if self.dmc_left == 0 {
             if self.dmc_r[0] & 64 != 0 {
                 self.dmc_restart()
-            } else if self.dmc_r[0] & 128 != 0 { self.dmc_irq = true }
+            } else {
+                // A one-byte load can disable its reader in the APU cycle
+                // before that byte enters the shifter. The reference keeps
+                // the resulting single halt, but not the later-chip extra
+                // full reload when this implicit stop is one clock later.
+                if self.dmc_bits == 1 && matches!(self.dmc_timer, 1 | 2) {
+                    self.dmc_abort_at =
+                        Some(self.cycle + self.dmc_timer as u64 + 1);
+                }
+                if self.dmc_r[0] & 128 != 0 { self.dmc_irq = true }
+            }
         }
     }
     pub fn status(&mut self, open: u8) -> u8 {

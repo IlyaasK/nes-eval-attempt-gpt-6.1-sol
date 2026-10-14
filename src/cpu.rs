@@ -1241,6 +1241,36 @@ mod dmc_dma_tests {
     }
 
     #[test]
+    fn a_one_byte_load_can_abort_a_reload_but_does_not_fetch_a_later_chip_extra_byte() {
+        // Load at800 ends at806, three clocks before the shifter transfer.
+        // An extra halt at809 moves its marker from823 to824. Loading two
+        // clocks later ends at808, and the reference has no full extra DMA.
+        let original = [0x78,0xa9,0x40,0x8d,0x17,0x40,
+            0xa9,0x0f,0x8d,0x10,0x40,0xa9,0x40,0x8d,0x11,0x40,
+            0xa9,0x20,0x8d,0x12,0x40,0xa9,0,0x8d,0x13,0x40,
+            0xa2,0x96,0xca,0xd0,0xfd,0x24,0,0xa9,0x10,0x8d,0x15,0x40,
+            0xa2,2,0xca,0xd0,0xfd,0x24,0,0xa9,0,0x8d,0x11,0x40];
+        for (shift, marker) in [(false,824), (true,825)] {
+            let mut code = original.to_vec();
+            if shift { code.insert(33, 0xea); }
+            let end = 0x8000 + code.len() as u16;
+            code.extend_from_slice(&[0x4c,end as u8,(end >> 8) as u8]);
+            let mut rom = vec![0; 16 + 32768];
+            rom[..4].copy_from_slice(b"NES\x1a");
+            rom[4] = 2;
+            rom[16..16 + code.len()].copy_from_slice(&code);
+            rom[16 + 0x4800] = 255;
+            rom[16 + 32764..16 + 32766].copy_from_slice(&0x8000u16.to_le_bytes());
+            let mut nes = Nes::new(Cart::load(&rom).unwrap());
+            while !matches!(nes.bus.borrow().request,
+                Some(CycleOp::Write(0x4011,0))) { nes.clock(); }
+            nes.clock();
+            assert_eq!(nes.bus.borrow().cycles, marker);
+            assert_eq!(nes.bus.borrow().apu.dmc_left, 0);
+        }
+    }
+
+    #[test]
     fn a_dmc_shadow_read_keeps_the_same_controller_output_enable() {
         let (nes, _) = fixture(None);
         let mut b = nes.bus.borrow_mut();
