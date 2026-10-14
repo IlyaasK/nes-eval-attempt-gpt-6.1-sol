@@ -326,6 +326,9 @@ impl Apu {
     }
     pub fn tick(&mut self) {
         self.cycle += 1;
+        // A timer edge sees the old linear/length counters. A coincident
+        // frame-counter edge changes the gate for the following timer edge.
+        self.tri.timer();
         self.frame_cycle += 1;
         if self.reset_delay > 0 {
             self.reset_delay -= 1;
@@ -348,7 +351,6 @@ impl Apu {
             37282 => if self.frame_mode & 128 != 0 { self.frame_cycle = 0 },
             _ => {}
         }
-        self.tri.timer();
         // The fixed power-on alignment places the half-rate timer edge on
         // odd numbered CPU cycles, independently of frame-counter resets.
         if self.cycle & 1 != 0 {
@@ -422,6 +424,34 @@ impl Apu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn triangle_gate_changes_after_a_coincident_timer_edge() {
+        // Original cycle-accounted ROMs align an 85-cycle triangle divider
+        // with the first or second quarter-frame edge after a $4017 write.
+        // The reference holds DAC 15 in the first case and DAC 8 in the
+        // second; clocking the gate first instead holds DAC 14 or DAC 7.
+        for (period_write, stop, edge, expected_seq) in
+            [(168, false, 7479, 0), (144, true, 14935, 24)]
+        {
+            let mut apu = Apu::new();
+            while apu.cycle < edge {
+                apu.tick();
+                match apu.cycle {
+                    18 => apu.write(0x4017, 64),
+                    50 => apu.write(0x4015, 4),
+                    60 => apu.write(0x4008, 131),
+                    200 => apu.write(0x400b, 0),
+                    14835 if stop => apu.write(0x4008, 128),
+                    _ => {}
+                }
+                if apu.cycle == period_write { apu.write(0x400a, 84); }
+            }
+            assert_eq!(apu.tri.seq, expected_seq);
+            assert_eq!(apu.tri.linear, if stop { 0 } else { 3 });
+            assert_eq!(apu.tri.output(), if stop { 8 } else { 15 });
+        }
+    }
 
     #[test]
     fn power_dmc_phase_matches_reader_and_dac_reference_timestamps() {

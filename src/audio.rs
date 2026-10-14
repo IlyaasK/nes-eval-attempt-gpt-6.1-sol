@@ -64,20 +64,37 @@ impl Resampler {
             let clock =
                 (self.phase + 44100 * 12) as f64 / CLOCK_SCALE as f64 -
                     (8.0 * 44100.0 * 12.0 / CLOCK_SCALE as f64);
-            let center =
-                17.0 + clock - if self.started { 1.334 } else { 0.0 };
-            self.started = true;
-            let base = center.floor() as isize - 16;
-            let pos = (center - center.floor()) * PHASES as f64;
-            let p = pos as usize;
-            let f = pos - p as f64;
-            for i in 0..TAPS {
-                let offset = base + i as isize;
-                if offset >= 0 {
-                    let k =
-                        self.kernels[p][i] +
-                            f * (self.kernels[p + 1][i] - self.kernels[p][i]);
-                    self.ring[(self.head + offset as usize) & 127] += delta * k;
+            if !self.started {
+                // Fixed power-on clock phase. These are the cumulative taps
+                // of the startup impulse after the 17-sample output delay.
+                const STARTUP: [f64; 17] = [
+                    0.938755072726, 1.031980775353, 0.984252702826,
+                    1.006131841473, 0.999401487416, 0.997925765493,
+                    1.002991013871, 0.997121668659, 1.002222053117,
+                    0.998539525466, 1.000865880595, 0.999587988277,
+                    1.000071909274, 0.999928906261, 0.999984257325,
+                    1.000027795906, 1.0,
+                ];
+                let mut previous = 0.0;
+                for (i, &cumulative) in STARTUP.iter().enumerate() {
+                    self.ring[(self.head + 17 + i) & 127] +=
+                        delta * (cumulative - previous);
+                    previous = cumulative;
+                }
+                self.started = true;
+            } else {
+                let center = 17.0 + clock - 1.334;
+                let base = center.floor() as isize - 16;
+                let pos = (center - center.floor()) * PHASES as f64;
+                let p = pos as usize;
+                let f = pos - p as f64;
+                for i in 0..TAPS {
+                    let offset = base + i as isize;
+                    if offset >= 0 {
+                        let k = self.kernels[p][i]
+                            + f * (self.kernels[p + 1][i] - self.kernels[p][i]);
+                        self.ring[(self.head + offset as usize) & 127] += delta * k;
+                    }
                 }
             }
         }
@@ -90,13 +107,13 @@ impl Resampler {
         self.emitted += 1;
         if self.emitted <= 17 { return None }
         let x = self.integrator;
-        let y = 0.987259035 * self.hp1_y + 0.987259035 * (x - self.hp1_x);
+        let y = 0.9872590350155737 * self.hp1_y + 0.9872590350155737 * (x - self.hp1_x);
         self.hp1_x = x;
         self.hp1_y = y;
-        let z = 0.939235180 * self.hp2_y + 0.939235180 * (y - self.hp2_x);
+        let z = 0.9392351762287491 * self.hp2_y + 0.9392351762287491 * (y - self.hp2_x);
         self.hp2_x = y;
         self.hp2_y = z;
-        self.lp += 0.863940 * (z - self.lp);
+        self.lp += 0.8639403657579068 * (z - self.lp);
         Some((self.lp * 32767.0).clamp(-32767.0, 32767.0) as i16)
     }
 }
