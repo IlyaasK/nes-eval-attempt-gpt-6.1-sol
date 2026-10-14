@@ -463,6 +463,9 @@ impl Ppu {
         }
         if self.scan == 261 && d == 1 { self.status &= 31; self.update_nmi() }
         if self.rendering() && line {
+            // An upper-table background keeps A12 low from the final NT
+            // fetch through the next line's first attribute fetch. A dot-0
+            // high pulse would erase the qualified MMC3 edge on dot 6.
             if d == 0 && self.scan < 240 && self.ctrl & 16 == 0 {
                 c.address(((self.ctrl as u16 & 16) << 8) +
                             self.tile as u16 * 16 + ((self.v >> 12) & 7), self.ticks)
@@ -486,16 +489,12 @@ impl Ppu {
                         let v = self.read_mem(c, a);
                         self.attr = (v >> (((self.v >> 4) & 4) | (self.v & 2))) & 3
                     }
-                    4 =>
-                        self.patlo =
-                            self.read_mem(c,
-                                ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16 +
-                                    ((self.v >> 12) & 7)),
-                    6 =>
-                        self.pathi =
-                            self.read_mem(c,
-                                ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16 +
-                                        ((self.v >> 12) & 7) + 8),
+                    4 => self.patlo = c.chr_read(
+                        ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
+                            + ((self.v >> 12) & 7)),
+                    6 => self.pathi = c.chr_read(
+                        ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
+                            + ((self.v >> 12) & 7) + 8),
                     7 => self.inc_x(),
                     _ => {}
                 }
@@ -512,6 +511,15 @@ impl Ppu {
                 self.v = (self.v & !0x7be0) | (self.t & 0x7be0)
             }
             if (1..=256).contains(&d) && self.scan < 240 { self.evaluate() }
+            if ((6..=256).contains(&d) || (326..=336).contains(&d))
+                && (d & 7 == 6 || d & 7 == 0)
+            {
+                // Background data is fetched on dots 5/7; its address
+                // reaches the cartridge one dot later. Sprite presentation
+                // has its separately measured phase at dot 260.
+                c.address(((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
+                    + ((self.v >> 12) & 7), self.ticks);
+            }
             if d == 256 || d == 320 {
                 c.address(0x2000 | (self.v & 0xfff), self.ticks)
             }
@@ -581,6 +589,31 @@ impl Ppu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mmc3_background_edge_follows_the_data_fetch_and_retains_the_low_interval() {
+        let mut rom = vec![0; 16 + 32768 + 8192];
+        rom[..4].copy_from_slice(b"NES\x1a");
+        rom[4] = 2;
+        rom[5] = 1;
+        rom[6] = 0x40;
+        let mut cart = Cart::load(&rom).unwrap();
+        cart.write(0xc000, 0, 0);
+        cart.write(0xc001, 0, 1);
+        cart.write(0xe001, 0, 2);
+        cart.address(0x1000, 0);
+        cart.address(0x2000, 96);
+        let mut ppu = Ppu::new();
+        ppu.scan = 0;
+        ppu.dot = 0;
+        ppu.ticks = 100;
+        ppu.ctrl = 16;
+        ppu.mask = 8;
+        while ppu.dot <= 5 { ppu.tick(&mut cart); }
+        assert!(!cart.irq);
+        ppu.tick(&mut cart);
+        assert!(cart.irq);
+    }
 
     #[test]
     fn forced_blanking_preserves_the_sprite_evaluators_oam_address() {

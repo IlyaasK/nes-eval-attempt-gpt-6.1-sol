@@ -12,6 +12,7 @@ pub struct Cart {
     control: u8,
     chr0: u8,
     chr1: u8,
+    chr_upper: bool,
     prgb: u8,
     last_write: u64,
     select: u8,
@@ -79,6 +80,7 @@ impl Cart {
                 control: 12,
                 chr0: 0,
                 chr1: 0,
+                chr_upper: false,
                 prgb: 0,
                 last_write: u64::MAX,
                 select: 0,
@@ -116,7 +118,7 @@ impl Cart {
                 1 => {
                     let n16 = (n / 2).min(16);
                     let outer =
-                        if n >= 64 { (self.chr0 as usize & 16) * 2 } else { 0 };
+                        if n >= 64 { (self.mmc1_chr() as usize & 16) * 2 } else { 0 };
                     let s = slot / 2;
                     let b =
                         match (self.control >> 2) & 3 {
@@ -198,6 +200,9 @@ impl Cart {
             _ => {}
         }
     }
+    fn mmc1_chr(&self) -> u8 {
+        if self.control & 16 != 0 && self.chr_upper { self.chr1 } else { self.chr0 }
+    }
     fn ram_index(&self, a: u16) -> usize {
         let bank =
             if self.mapper == 1 {
@@ -254,6 +259,12 @@ impl Cart {
         t * 1024 + (a & 1023)
     }
     pub fn address(&mut self, a: u16, dot: u64) {
+        if self.mapper == 1 {
+            // SxROM boards reuse the currently selected CHR address lines
+            // for PRG ROM/RAM. In 4 KiB mode the PPU chooses the register.
+            self.chr_upper = a & 0x1000 != 0;
+            return;
+        }
         if self.mapper != 4 { return }
         let high = a & 0x1000 != 0;
         if !high {

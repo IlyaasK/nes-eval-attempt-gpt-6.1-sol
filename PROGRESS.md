@@ -349,7 +349,7 @@ frame/audio sweep is running, output .out/diagnostic-ref/results.json.
 This may expose reference-versus-hardware diagnostic differences; inspect
 its results rather than assuming passing RAM status means exact output.
 
-## Current open issue: MMC3 background-$1000 IRQ timing
+## Resolved investigation: MMC3 background-$1000 IRQ timing
 
 The oracle diagnostic sweep completed: all30 final images matched EXCEPT
 mmc3_test_2__4-scanline_timing. Oracle fails #9: "Scanline 0 IRQ should occur
@@ -392,3 +392,55 @@ All26units+ABIpass and wasm built with thisfix. Lengthtable600 audio RMSE
 largeaudioerrors; referenceWAVs remainvalid. Everyotherdiagnostic audio
 was~.01-.017RMSE andpeak1 exceptMMC3 failure. Nextregularnative buildshould
 remove trace feature; currentbinarymaybetrace fromrunningtimingjob.
+
+## Current verified state after resolving background MMC3 edges
+
+The background-$1000 issue is resolved by three general PPU changes:
+1. Remove the artificial early background CHR presentation at dot4/324.
+2. Preserve A12 low across visible dot0 when background uses $1000. Keep
+   the old dot0 low presentation for a $0000 background.
+3. Read background pattern data at dots5/7, but present its cartridge address
+   at dots6/8 (prefetch326/328/etc). Sprite early presentation260 remains.
+
+With only the first change the oracle MMC3 scanline test already matched,
+but repeated IRQ markers still differed. Removing upper-table dot0 restored
+all1302 IRQs in CTRL16/LATCH8. A generic coordinate-descent DAC marker fitter,
+tools/refine_dac_markers.py, inferred155 timestamps +3CPU and1147 unchanged.
+An original DAC-only replay of that inferred list produced EXACT oracle audio
+(RMSE0), proving those timestamps independently of the approximate FIR.
+Delaying the background address by one dot then made native all1302 cycle/
+value pairs equal that exact list. .out/mmc3-bg1000/delayed-writes8.txt equals
+refined8.txt at every4011 write; delayed8/audio.raw RMSE.438peak4 (DSP-only).
+
+A PPU unit protects the cartridge IRQ edge on dot6, after data fetch5, and
+preserving low337->6 across scanline boundary. All27unit+ABItests pass. The
+required wasm is built with this implementation (149KiB, no imports).
+Eight original marker configurations CTRL0/8/16/24/32/40/48/56 LATCH8 allmatch
+samplecounts and have RMSE.01-.44, peaks<=4. This covers both pattern tables
+and8x8/8x16 sprite evaluation/fetch configurations, with background enabled.
+References/native .out/mmc3-layout-{ctrl}-ref.wav and matching-native dirs.
+
+All20000 video frames in the four varied5000-game replays match AGAIN after
+all new APU/PPU/FIR changes. Native .out/varied-final-{rfk,rhde,ff,stallar}.
+Audio3668206samples each, RMSE RFK.000738, RHDE.073714, FF.118370,
+Stallar.202337. Peaks RFK1, RHDE2, FF4, Stallar10. Rare larger Stallar sample
+errors deserve investigation; no sustained channel state divergence observed.
+
+Latest bundled sweep .out/final-current-regression.log and
+.out/regression/results.json. Expected exceptional statuses: CPUreset129
+(waiting for hardware Reset, matchingreference) andMMC3scanline9 (matching
+referencefail9). Everyother diagnosticstatus0. The new MMC3 final image is
+byte-exact and audioRMSE.02975peak1, samplecount439524 matchingreference.
+Latest sourcecomments/unit may not be in the previous supervisor checkpoint;
+all sourcefiles are present and compiled in the current wasm.
+
+Mapper2 original bus-conflict probe uxrom_conflict_probe.s/uxrom_probe.cfg
+hasinitialROMbyte0 at writeaddress8000 and selectsbank2($22). Reference and
+native output34 forlegacyheader andNES2submappers0/1/2. Reference ignores
+bus conflicts evenwhenNES2submapper2 requests them; current behavior matches.
+.out/uxrom/sub{-1,0,1,2}.nes andref/nativeoutputs retainproof. Do not introduce
+hardware bus conflicts based solely on the NESdev docs withoutoracleprobes.
+
+Current next work: original MMC1 board/outer-bank/RAM probes and CNROM,
+rendering/PPUDATA/OAM edge cases, more varied inputs, and exact normal FIR/
+phase/mixer arithmetic. The task remains active indefinitely; no conclusion.
