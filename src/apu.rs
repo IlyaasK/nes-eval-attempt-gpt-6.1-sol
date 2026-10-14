@@ -204,6 +204,7 @@ pub struct Apu {
     dmc_shift: u8,
     dmc_bits: u8,
     dmc_silent: bool,
+    dmc_packet_was_silent: bool,
     dmc_timer: u16,
     dmc_out: u8,
     pub dmc_irq: bool,
@@ -241,6 +242,7 @@ impl Apu {
             dmc_shift: 0,
             dmc_bits: 8,
             dmc_silent: true,
+            dmc_packet_was_silent: true,
             dmc_timer: 422,
             dmc_out: 0,
             dmc_irq: false,
@@ -318,6 +320,13 @@ impl Apu {
                 if a == 0x4011 { self.dmc_out = v & 127 }
             }
             0x4015 => {
+                // Reasserting reader enable sends a load pulse even while
+                // its sample buffer is full. A pulse meeting the next bit
+                // clock retains reload feedback until the packet boundary.
+                if v&16!=0 && self.dmc_buffer.is_some() &&
+                    self.dmc_timer==if self.cycle&1==0 {8} else {7} {
+                    self.dmc_reload_latched=true;
+                }
                 for i in 0..2 {
                     self.pulse[i].enable = v & (1 << i) != 0;
                     if !self.pulse[i].enable { self.pulse[i].length = 0 }
@@ -386,7 +395,7 @@ impl Apu {
         // an empty output boundary. The reference accepts that byte into
         // the new shifter packet and immediately prefetches the next one.
         // An implicitly ended one-byte reader does not perform this handoff.
-        if self.dmc_left != 0 && self.dmc_silent &&
+        if self.dmc_left != 0 && self.dmc_silent && self.dmc_packet_was_silent &&
             self.dmc_output_clock == Some(self.cycle - 1) {
             self.dmc_buffer = None;
             self.dmc_shift = v;
@@ -451,6 +460,7 @@ impl Apu {
             if self.dmc_bits == 0 {
                 self.dmc_bits = 8;
                 self.dmc_output_clock = Some(self.cycle);
+                self.dmc_packet_was_silent=self.dmc_silent;
                 if self.dmc_reload_latched && self.dmc_left == 0 {
                     self.dmc_abort_at = Some(self.cycle);
                 }
@@ -528,6 +538,45 @@ mod tests {
             apu.write(0x400a, 2);
             for _ in 0..30 { apu.tick(); }
             assert_ne!(apu.tri.seq, 0);
+        }
+    }
+
+    #[test]
+    fn reader_enable_pulses_can_latch_reload_feedback_at_an_early_bit() {
+        for cycle in [100u64,101] {
+            for offset in [-1i32,0,1] {
+                let mut apu=Apu::new();
+                apu.cycle=cycle;
+                apu.dmc_r[0]=15;
+                apu.dmc_buffer=Some(0x55);
+                apu.dmc_left=17;
+                apu.dmc_bits=2;
+                apu.dmc_timer=((if cycle&1==0 {8} else {7})+offset) as u16;
+                let bit=cycle+apu.dmc_timer as u64+1;
+                apu.write(0x4015,16);
+                while apu.cycle<bit+1 {apu.tick();}
+                apu.write(0x4015,0);
+                while apu.cycle<bit+54 {apu.tick();}
+                assert_eq!(apu.dmc_abort_at,if offset==0 {Some(bit+54)} else {None});
+            }
+        }
+    }
+
+    #[test]
+    fn late_delivery_does_not_replace_a_packet_that_has_just_become_silent() {
+        for was_silent in [false,true] {
+            let mut apu=Apu::new();
+            apu.cycle=100;
+            apu.dmc_r[0]=15;
+            apu.dmc_left=17;
+            apu.dmc_bits=1;
+            apu.dmc_timer=0;
+            apu.dmc_silent=was_silent;
+            apu.dmc_shift=0xff;
+            apu.tick();apu.tick();
+            apu.dmc_supply(0xff);
+            assert_eq!(apu.dmc_buffer,if was_silent {None} else {Some(0xff)});
+            assert_eq!(apu.dmc_need(),was_silent);
         }
     }
 

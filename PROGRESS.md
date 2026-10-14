@@ -1569,3 +1569,55 @@ AlltrialPPUbackups .out/ppu-read-holdN.rs/native .out/run-ppu-read-holdN.
 Currently sourcePPUinc4baseunvalidated; artifact59still. Original74BUFcases
 emptySProw0/8(tall) match, extra64endlineBUFcasesonefailREADdot333 ->bufuses
 nextNTat337 ratherthanHI336. Needrefine. NeveradoptonaudioonlywithoutRGB.
+
+## Accepted60 / upcoming APU61 feedback experiment
+60units/allold312audio/215DMA/30diagnostics/20kvariedgameframes pass. Artifact
+60nowbuiltABIbuffered-enableprobevalidated, native .out/run-buffered-enable60,
+CPUbackup .out/cpu60-accepted.rs,PPU .out/ppu60-accepted.rs (=57still).
+Newenabledeadlinefixes777/787;5freshcases remain858/870/879/900/933.
+
+CriticalAPUenablefeedback: 4remaining858/870/879/933 EACHprevious4015ENABLE
+(fullBUFactiveDMC) at timer8 EVENCPU or timer7 ODDCPU. This is9/8CPUbefore
+ANYBIT. Controlledactive-enable-feedback grid d4/d5 enableactual746even/
+747odd beforebit755 produceextraHALT afterstop760, oldpeak78 vsotherspeak1.
+SourceAPU nowTRIAL setdmc_reload_latched onany4015enablefullBUFwith EXACT
+parity-qualified timer8/7. Nativebuilding .out/run-enable-feedback61 later.
+APU60backup .out/apu60-accepted.rs. Anotherremaining900 loopingONEBYTE late
+initialGET supplycurrent+1 afterBYTE erroneouslyallowsimmediatehandoff because
+looprestart setsleft1;likelyhandoff mustexcludeinitialonebyte evenlooping.
+Needloop/multibyte boundarygrid beforeimplement.
+
+PPUfetch-event-based externalLOWaddr latch hold finishes nextBGLOaddr5,
+exceptrequestBUFfilledonBGATTRdata4/LOADDR5 ->finishBGHIaddr7. Thisreplaces
+heuristicclockdurationtableandhandlesSPfetchpauseandendlineproperly. Controlled
+115READ-scrollcasesnow2bad13pixels(old1399), visibleREADphases ALLexact.
+2badlastprefetch READd331/d334 firstnextline8pixels needfurtherholdrelease.
+BUFfilld336 nowpeeknextNT(v) notoldHIGHCHR: S3read333 buf49fixed, also2status
+lowbitserrors propagatefixed. Fourmixedcaptureserrorsnow23/19/20/2, mostlyOAM.
+PPUtrial .out/ppu-fetch-release-before-adopt.rs/native .out/run-ppu-fetch-release.
+NOTadopted, requiredartifact60remainsPPU57. Mixed16reads audioavgdown720->~300,
+videoimproves32794->~28k butsomebigremainingRGBunrelated. Needcontrolledremaining
+SP/endline +MMC3 IRQ regression/broadgames beforeadopt.
+
+APU61 enablefeedback EXPERIMENT fixes858/870/879/933, controlled12active-
+enable probes allpeak1. New256nowONLY900bad. Ruleexacttimer8EVEN/7ODD with
+4015bit4one/fullbuffer;deferredreloadfeedback thenSTOP beforepacketabortsHALT,
+possibleOAMGET. APUbackuptrial .out/apu-enable-feedback61-trial.rs, fixed
+native .out/run-enable-feedback61. Needsalloldregs/unit/broad beforeadopt.
+CurrentAPU62additionalTRIAL dmc_packet_was_silent capturedbeforeBYTE;lateGET
+handoffrequirespriorpacket alreadySILENT, notjustjustbecameSILENT atBYTE.
+900previouspacketACTIVE thenemptyBYTE1324243/GET1324244 currentlylatehandoff
+causesextraGET1324248;referenceCPU-2 afterlaterOAM parity shift. Coldlooponebyte
+lateGETmuststillhandoff(acceptedexistingunitexpects66). Requiredartifact60.
+
+## Accepted62 audio/artifact; ongoingPPU63
+62units pass (enablefeedbackqualifiedparity+adjacentcontrols; latehandoff
+priorSILENTdistinction). All568retainedrandomaudio/APU/DMC/OAMstreams exact
+counts/availableimages peak<=2, plus215DMA peak1,30diagnostics peak1,4varied
+5000games all20kframes/images/countsexactandunchangedaudiopeak1. RequiredWASM
+62builtABIseed90012callschecked .out/abi62.log; native .out/run-audio62,
+backups .out/{cpu,apu,ppu}62-accepted.rs. PPUstill57/Cart58correctRAM.
+New256seeds1100..1355 running .out/apu-dma-heldout62.log against62 while
+PPUdummyNT release337/339 trialsbuilding. TwoPPUcases firstnextline13pixels
+areATTRIBUTEONLY (uniformpal/CHRencodedbitsmatch). ClearingheldADDRlatchat
+endline dummyNT339 possiblyfixes; broadPPUvalidationthenadopt ifsafe.

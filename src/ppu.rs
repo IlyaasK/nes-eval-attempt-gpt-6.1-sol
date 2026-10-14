@@ -584,6 +584,8 @@ impl Ppu {
                         // byte; the upper address pins follow live v.
                         let a = 0x2000 | (self.v & 0xf00) | self.bg_fetch_low as u16;
                         self.tile = self.nt[c.nt_index(a)];
+                        #[cfg(feature="trace")]
+                        eprintln!("PPU_NT {} {} {} {:04x} {} v={:04x} low={:02x} held={} buf={:02x}",self.ticks,self.scan,d,a,self.tile,self.v,self.bg_fetch_low,self.read_hold_active,self.read_hold);
                     }
                     2 => {
                         let a = 0x23c0 | (self.v & 0xc00) | ((self.v >> 4) & 0x38) |
@@ -594,6 +596,8 @@ impl Ppu {
                     3 => {
                         let a = 0x2300 | (self.v & 0xc00) | self.bg_fetch_low as u16;
                         let v = self.nt[c.nt_index(a)];
+                        #[cfg(feature="trace")]
+                        eprintln!("PPU_ATTR {} {} {} {:04x} {} v={:04x} low={:02x} held={} buf={:02x}",self.ticks,self.scan,d,a,v,self.v,self.bg_fetch_low,self.read_hold_active,self.read_hold);
                         self.attr = (v >> (((self.v >> 4) & 4) | (self.v & 2))) & 3;
                     }
                     4 => {
