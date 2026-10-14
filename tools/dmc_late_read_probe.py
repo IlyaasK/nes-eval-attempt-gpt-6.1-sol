@@ -14,20 +14,24 @@ p.add_argument('--store-y',type=int)
 p.add_argument('--read-port',type=lambda v:int(v,0),default=0x2007)
 p.add_argument('--after-port',type=lambda v:int(v,0),default=0x2007)
 p.add_argument('--edge-cycle',type=int,default=108579)
+p.add_argument('--frame-mode',type=int,default=64)
+p.add_argument('--post-read',type=lambda v:int(v,0))
 p.add_argument('--intervening-read',action='store_true')
 p.add_argument('--intervening-ppu',type=lambda v:int(v,0));a=p.parse_args()
 out=pathlib.Path(a.rom);out.parent.mkdir(parents=True,exist_ok=True)
 dma_clocks=3+4*((a.edge_cycle-1-30819)//432+1)
-rows=[(16,0x4017,64),(30777,0x4010,79),(30783,0x4012,32),
+rows=[(16,0x4017,a.frame_mode),(30777,0x4010,79),(30783,0x4012,32),
  (30789,0x4013,a.length),(30795,0x4015,16),
  (a.edge_cycle-59-dma_clocks,0x2006,0),(a.edge_cycle-53-dma_clocks,0x2006,6)]
 if a.chr_ram:
  rows.extend([(30000,0x2006,0),(30006,0x2006,6)])
  rows.extend((30012+i*6,0x2007,(6+i+a.shift)&127) for i in range(4))
  rows.sort()
+if a.after_port == 0x4016:
+ rows.extend([(30060,0x4016,1),(30066,0x4016,0)]);rows.sort()
 trace=out.with_suffix('.txt');trace.write_text(''.join(f'WRITE {t} {addr:04x} {v}\n' for t,addr,v in rows))
 subprocess.run([sys.executable,'tools/replay_noise.py',str(trace),str(out),
- '--registers','2006,2007,4010,4012,4013,4015,4017'],check=True)
+ '--registers','2006,2007,4010,4012,4013,4015,4016,4017'],check=True)
 rom=bytearray(out.read_bytes());end=int.from_bytes(rom[-6:-4],'little');pos=end-0x8000
 rom[16+0x4800:16+0x4900]=bytes([255])*256
 port=[a.read_port&255,a.read_port>>8]
@@ -40,7 +44,9 @@ code+=bytes([0xad,*port])
 if a.intervening_read:code+=bytes([0x24,0])
 if a.intervening_ppu is not None:code+=bytes([0x2c,a.intervening_ppu&255,a.intervening_ppu>>8])
 code+=bytes([0x8c if a.store_y is not None else 0x8d,a.store&255,a.store>>8,0xca,0xd0,0,
- 0xad,a.after_port&255,a.after_port>>8,0x85,0,0xa9,0,0x8d,0x15,0x40,
+ ])
+if a.post_read is not None:code+=bytes([0x2c,a.post_read&255,a.post_read>>8])
+code+=bytes([0xad,a.after_port&255,a.after_port>>8,0x85,0,0xa9,0,0x8d,0x15,0x40,
  0xa5,0,0x29,0xc0,0x4a,0x8d,1,0x20,
  0xa9,0x3f,0x8d,6,0x20,0xa9,0,0x8d,6,0x20,0xa5,0,0x29,0x3f,0x8d,7,0x20,
  0xa9,0x3f,0x8d,6,0x20,0xa9,0,0x8d,6,0x20])

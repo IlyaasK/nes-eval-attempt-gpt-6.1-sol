@@ -173,7 +173,7 @@ pub struct Bus {
     dmc_pending_at: Option<u64>,
     dmc_stage: Option<DmcDmaStage>,
     last_dmc_get: Option<u64>,
-    dmc_read_after_address: bool,
+    dmc_register_selector: Option<u8>,
     dmc_open_before_get: u8,
     dmc_forced: bool,
     request: Option<CycleOp>,
@@ -208,7 +208,7 @@ impl Bus {
             dmc_pending_at: None,
             dmc_stage: None,
             last_dmc_get: None,
-            dmc_read_after_address: false,
+            dmc_register_selector: None,
             dmc_open_before_get: 0,
             dmc_forced: false,
             request: None,
@@ -303,6 +303,7 @@ impl Bus {
                     self.dmc_open_before_get = self.open;
                     let v = self.raw_dma_read(a);
                     self.last_dmc_get = Some(self.cycles);
+                    self.dmc_register_selector = Some(self.dmc_open_before_get);
                     #[cfg(feature="trace")]
                     eprintln!("DMC_GET {} {:04x} {:04x} {}", self.cycles,
                         a, self.dma_halt_addr, v);
@@ -318,14 +319,19 @@ impl Bus {
             return false;
         }
         self.request = None;
-        let repeat_read = std::mem::take(&mut self.dmc_read_after_address);
         let value = match op {
             CycleOp::Read(a) => {
+                // A DMC transfer retains the pre-get bus byte as a register
+                // selector. The next CPU I/O read consumes it; RAM, ROM,
+                // operand fetches and writes do not. Matching a canonical
+                // register repeats its read without adding a CPU clock.
+                // Mirrored PPU ports consume the latch but do not repeat.
+                let selector = if (0x2000..0x4020).contains(&a) {
+                    self.dmc_register_selector.take()
+                } else { None };
+                let repeat_read = ((0x2000..=0x2007).contains(&a) ||
+                    (0x4000..0x4020).contains(&a)) && selector == Some(a as u8);
                 if repeat_read {
-                    // A DMC transfer in the last address-fetch cycle also
-                    // repeats the following data read. A page-crossing
-                    // dummy access consumes this repeat before the final
-                    // read. It adds peripheral side effects, not clocks.
                     self.raw_read(a);
                     self.pad_oe = None;
                 }
@@ -570,12 +576,10 @@ impl Cpu {
             }
             Abs => {
                 let a = self.word().await;
-                self.finished_address();
                 a
             },
             Abx | Aby => {
                 let base = self.word().await;
-                self.finished_address();
                 self.base_addr = base;
                 let a =
                     base.wrapping_add(if m == Abx { self.x } else { self.y } as
@@ -591,7 +595,6 @@ impl Cpu {
                 let b = b.wrapping_add(self.x);
                 let l = self.read(b as u16).await as u16;
                 let a = l | ((self.read(b.wrapping_add(1) as u16).await as u16) << 8);
-                self.finished_address();
                 a
             }
             Izy => {
@@ -600,7 +603,6 @@ impl Cpu {
                 let base =
                     l |
                         ((self.read(b.wrapping_add(1) as u16).await as u16) << 8);
-                self.finished_address();
                 self.base_addr = base;
                 let a = base.wrapping_add(self.y as u16);
                 if store || (base ^ a) & 0xff00 != 0 {
@@ -610,10 +612,6 @@ impl Cpu {
             }
             _ => 0,
         }
-    }
-    fn finished_address(&self) {
-        let mut b = self.bus.borrow_mut();
-        b.dmc_read_after_address = b.last_dmc_get == Some(b.cycles - 1);
     }
     async fn step(&mut self) {
         use Op::*;
@@ -1173,6 +1171,41 @@ mod dmc_dma_tests {
             &[0xb1,0x10,0x29,1], false), 1);
         // The page-crossing dummy read consumes it before accessing the pad.
         assert_eq!(run(&[0xa2,23], &[0xbd,0xff,0x3f,0x29,1], false), 0);
+        // An indexed operand's low byte need not equal the final register.
+        // Matching the instruction phase alone would repeat these wrongly.
+        assert_eq!(run(&[0xa2,7,0x24,0], &[0xbd,0,0x20], false), 0);
+        assert_eq!(run(&[0x24,0], &[0xad,0x0f,0x20], false), 0);
+    }
+
+    #[test]
+    fn a_dmc_bus_selector_survives_ram_reads_but_is_consumed_by_io_reads() {
+        for (intervening, expected) in [
+            (&[][..],34), (&[0x24,0][..],34), (&[0x2c,2,0x20][..],17),
+        ] {
+            let mut code = vec![0xa9,7,0x8d,1,0x60,0xca,0xd0,0];
+            code.extend_from_slice(intervening);
+            code.extend_from_slice(&[0xad,7,0x20,0x8d,0,0x60,0x02]);
+            let mut rom = vec![0; 16 + 32768];
+            rom[..4].copy_from_slice(b"NES\x1a");
+            rom[4] = 2;
+            rom[16..16 + code.len()].copy_from_slice(&code);
+            rom[16 + 0x4800..16 + 0x4811].fill(255);
+            rom[16 + 32764..16 + 32766].copy_from_slice(&0x8000u16.to_le_bytes());
+            let mut nes = Nes::new(Cart::load(&rom).unwrap());
+            {
+                let mut b = nes.bus.borrow_mut();
+                for (a, v) in [(0,17), (1,34), (2,51)] { b.cart.chr_write(a, v); }
+                let Bus { ppu, cart, .. } = &mut *b;
+                ppu.read_reg(cart, 0x2007);
+                // The request coincides with STA's write clock, so it waits
+                // for DEX's opcode fetch. The CPU bus is still the written7.
+                b.apu.dmc_addr = 0xc800;
+                b.apu.dmc_left = 17;
+                b.dmc_pending_at = Some(14);
+            }
+            while nes.bus.borrow().cycles < 100 { nes.clock(); }
+            assert_eq!(nes.bus.borrow().cart.ram[0], expected);
+        }
     }
 
     #[test]
