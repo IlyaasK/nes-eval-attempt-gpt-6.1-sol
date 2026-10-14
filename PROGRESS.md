@@ -1621,3 +1621,22 @@ New256seeds1100..1355 running .out/apu-dma-heldout62.log against62 while
 PPUdummyNT release337/339 trialsbuilding. TwoPPUcases firstnextline13pixels
 areATTRIBUTEONLY (uniformpal/CHRencodedbitsmatch). ClearingheldADDRlatchat
 endline dummyNT339 possiblyfixes; broadPPUvalidationthenadopt ifsafe.
+
+## PPU63 controlledall115 images EXACT; adoption waitingMMC3READpinfix
+Correctedempty8x16fetch FE0row0 (notrow8FF0); S3mixedREADremainingONLYOAM
+index256. Finalendline attribute hypothesiswrong! Pixels16..23 notfirst8;
+heldexternalLOWaddr fordummyNT337/339 mustbe updatedto**address low V**,
+whileCPUreadhold persists. Thisfixed2remaining115cases ->all0pixels.
+CurrentPPU64unitsinclPIXELintegratedREADlatchcc9/normalc95+buffer+3/inc+4,
+emptySProw0bothmodes. Old215DMA+30diagnostics+20kvariedgames+52BGMM3switch+
+72SPswitch+30CPUA12 all pass(unchanged). Mixed16video~28kpixels vsold32k,
+READaudioavg~300 vsold720. Native .out/run-ppu-read-dummy-address63; backup
+.out/ppu63-before-cart-pins.rs inclunits. Artifact62 stillPPU57.
+
+NEW36MMC3 continuousREAD2007 IRQ/DAC casesCTRLandLATCH/nop, allcounts/images
+exact butmass IRQaudioerrorold62 AND63 (RMS4k..8k). CPUREADmuststilldrivecart
+addresspins althoughBUFcomesrenderfetchbus. Building3pintrials read-immediate,
+inc-delayed+4end,both; .out/run-ppu63-cart-{read,inc,both}. Noadoptuntilpin
+ruleworkedout;pureNROMcontrolledimages unaffectedpins. Requiredartifact62.
+Newaudio256seeds1100..1355 allcounts/imagesexact peak<=2 maxRMS.243975; now
+824randomaudiofixturespass62, all7formerlybadfixed.

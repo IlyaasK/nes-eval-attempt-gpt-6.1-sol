@@ -71,6 +71,13 @@ bottom_oam:
  .res 252,$ea
 .endif
 forever:
+.ifdef READ_LOOP
+ lda $2007
+ .repeat READ_LOOP
+ nop
+ .endrepeat
+ jmp forever
+.else
 .ifdef SWITCH_CTRL
  lda #(CTRL & ($ff ^ SWITCH_BIT))
  sta $2000
@@ -88,6 +95,7 @@ forever:
  jmp forever
 .endif
 .endif
+ .endif
 irq:
  pha
  lda $00

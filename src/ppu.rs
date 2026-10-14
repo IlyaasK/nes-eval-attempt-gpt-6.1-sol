@@ -258,6 +258,7 @@ impl Ppu {
             7 => {
                 let a = self.v & 0x3fff;
                 if self.rendering_line() {
+                    c.address(a,self.ticks);
                     self.data_reads.push_back(self.ticks+3);
                     self.data_incs.push_back(self.ticks+4);
                     return if a>=0x3f00 {
@@ -450,7 +451,7 @@ impl Ppu {
         let tall = self.ctrl & 32 != 0;
         row &= if tall { 15 } else { 7 };
         if attr & 128 != 0 { row ^= if tall { 15 } else { 7 } }
-        if i >= self.next_count { row = if tall {8} else {0}; }
+        if i >= self.next_count { row = 0; }
         if tall {
             ((tile as u16 & 1) << 12) + ((tile as u16 & 254) * 16) +
                     ((row as u16 & 8) << 1) + (row as u16 & 7)
@@ -584,8 +585,6 @@ impl Ppu {
                         // byte; the upper address pins follow live v.
                         let a = 0x2000 | (self.v & 0xf00) | self.bg_fetch_low as u16;
                         self.tile = self.nt[c.nt_index(a)];
-                        #[cfg(feature="trace")]
-                        eprintln!("PPU_NT {} {} {} {:04x} {} v={:04x} low={:02x} held={} buf={:02x}",self.ticks,self.scan,d,a,self.tile,self.v,self.bg_fetch_low,self.read_hold_active,self.read_hold);
                     }
                     2 => {
                         let a = 0x23c0 | (self.v & 0xc00) | ((self.v >> 4) & 0x38) |
@@ -596,8 +595,6 @@ impl Ppu {
                     3 => {
                         let a = 0x2300 | (self.v & 0xc00) | self.bg_fetch_low as u16;
                         let v = self.nt[c.nt_index(a)];
-                        #[cfg(feature="trace")]
-                        eprintln!("PPU_ATTR {} {} {} {:04x} {} v={:04x} low={:02x} held={} buf={:02x}",self.ticks,self.scan,d,a,v,self.v,self.bg_fetch_low,self.read_hold_active,self.read_hold);
                         self.attr = (v >> (((self.v >> 4) & 4) | (self.v & 2))) & 3;
                     }
                     4 => {
@@ -698,10 +695,14 @@ impl Ppu {
                 }
             }
             if d == 337 {
+                if self.read_hold_active {self.read_hold=self.v as u8;}
                 self.load_shift();
                 self.read_mem(c, 0x2000 | (self.v & 0xfff));
             }
-            if d == 339 { self.read_mem(c, 0x2000 | (self.v & 0xfff)); }
+            if d == 339 {
+                if self.read_hold_active {self.read_hold=self.v as u8;}
+                self.read_mem(c, 0x2000 | (self.v & 0xfff));
+            }
         }
         if line && self.render_history & 2 != 0 {
             if d == 256 { self.inc_y() }
@@ -727,7 +728,8 @@ impl Ppu {
             self.data_incs.pop_front();
             if self.rendering_line() {
                 self.inc_x();
-                if !(d==256 && self.render_history&2!=0) { self.inc_y(); }
+                self.inc_y();
+                c.address(self.v&0x3fff,self.ticks);
             } else { self.inc_v(c); }
         }
         if self.scan < 240 && (1..=256).contains(&d) { self.render_pixel() }
@@ -756,6 +758,46 @@ impl Ppu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rendering_read_delays_the_buffer_and_scroll_and_changes_the_fetch_latch() {
+        let mut rom=vec![0;16+16384+8192];
+        rom[..4].copy_from_slice(b"NES\x1a");rom[4]=1;rom[5]=1;
+        rom[16+16384+0xcc9]=255;
+        let mut c=Cart::load(&rom).unwrap();
+        let mut p=Ppu::new();
+        p.scan=100;p.dot=22;p.mask=10;p.render_history=15;
+        p.v=0x4184;p.tile=251;p.bg_fetch_low=0xb4;p.buf=0xa5;
+        p.nt[c.nt_index(0x2185)]=201;
+        for i in [1,5,9,13] {p.pal[i]=17;}
+        assert_eq!(p.read_reg(&mut c,7),0xa5);
+        assert_eq!(p.buf,0xa5);
+        for _ in 0..4 {p.tick(&mut c);}
+        assert_eq!(p.buf,201);
+        assert_eq!(p.v,0x4185);
+        p.tick(&mut c);
+        assert_eq!(p.v,0x5186);
+        while p.dot<50 {p.tick(&mut c);}
+        assert_eq!(&p.fb[100*256+40..100*256+48],&[17;8]);
+    }
+
+    #[test]
+    fn empty_sprite_reads_use_row_zero_in_both_sprite_sizes() {
+        for tall in [false,true] {
+            let mut rom=vec![0;16+16384+8192];
+            rom[..4].copy_from_slice(b"NES\x1a");rom[4]=1;rom[5]=1;
+            let base=if tall {0x1fe0} else {0xff0};
+            rom[16+16384+base]=0x31;
+            rom[16+16384+base+8]=0x52;
+            let mut c=Cart::load(&rom).unwrap();
+            let mut p=Ppu::new();
+            p.scan=100;p.dot=260;p.mask=10;p.render_history=15;
+            p.ctrl=if tall {32} else {0};p.secondary.fill(255);
+            assert_eq!(p.read_reg(&mut c,7),0);
+            for _ in 0..4 {p.tick(&mut c);}
+            assert_eq!(p.buf,0x52);
+        }
+    }
 
     #[test]
     fn sprite_pattern_address_and_range_are_latched_before_both_bitplanes() {
