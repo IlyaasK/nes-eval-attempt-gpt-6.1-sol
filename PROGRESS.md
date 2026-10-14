@@ -1142,3 +1142,26 @@ runcompleted; generated .out/pulse49-diagnostic-comparison.json whenchecked.
 Currentsourceallaccepted49; defaultnative49traceOFF, .out/run-pulse-sweep-order49.
 ToolTrace_pulse_state48 usesoldPulseordering butcurrentDMC pipeline forevents,
 so doNOTuse itfornewPulse validation (traceonlyhelperoldfields).
+
+## New aborted-reload latch hypothesis strongly constrained by CPU video
+
+Normalized33000mask: stoppedlength1/17loop/nonloop allCPU+1 (3pxedge), one-
+byteNoStopnonloop ALSO+1; continuing17byteNoStopmatches. So itisnotcausedby
+stop alone: read-completefeedback leavescancelledrequestatnextpacketwhen
+readerisended; activeordinaryreloadabsorbspulse. New36video-onlyload probes
+bits0/4/7, initialreadpositionsnearbit, with/withoutGPIO649: mismatchONLY
+loadGET1APUbeforeBIT clock (timer2), missingbits0and4 becauseoldimplicitabort
+requiresbits==1. Bits0GPIOtrue cancels pulse (CPUiswritingRAM809duringzero-
+pageinit), GPIOfalseeligibleREAD809; bits4botheligibleREAD809. Thismatches
+pendingabort untilBYTE809, notimmediatenextBIT431/647.
+
+TrialApu.dmc_reload_latched bool setonvalidSupplywhenremaining>0beforedecrement
+andtimer1/2, regardlessbits/loop/remaining count. Atoutputpacketboundary, if
+readerhasended left0, scheduleabort_at CURRENTbyteclock; clearlatch. Active
+readerusesordinaryreload, so noextraabort. Replaces oldimmediatesupply-
+scheduledimplicitabort limitedbits1; explicitstop2/3beforepacket stillkept.
+NewsourceTRIAL (mustvalidate113/Loopmask36 andoldstop/implicit regressions
+beforeadopt). AcceptedAPUbackup .out/apu-before-latched-dmc-abort.rs. WASM
+stillaccepted49Pulseordering+oldabortpipeline, buildnewnativeinprogress.
+LoopNoStop maskdiff15onlypublishedrow0(notedge) isseparatepotentialframe-
+callback issue, notCPUtiming; investigateafterabortedlatch validated.

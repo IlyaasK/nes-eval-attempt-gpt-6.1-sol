@@ -199,6 +199,7 @@ pub struct Apu {
     pub dmc_extra_at: Option<u64>,
     dmc_buffer_clock: Option<u64>,
     pub dmc_output_clock: Option<u64>,
+    dmc_reload_latched: bool,
     dmc_buffer: Option<u8>,
     dmc_shift: u8,
     dmc_bits: u8,
@@ -235,6 +236,7 @@ impl Apu {
             dmc_extra_at: None,
             dmc_buffer_clock: None,
             dmc_output_clock: None,
+            dmc_reload_latched: false,
             dmc_buffer: None,
             dmc_shift: 0,
             dmc_bits: 8,
@@ -367,19 +369,16 @@ impl Apu {
         // A retained request after a stop still fills the output buffer.
         // It does not restart the disabled reader or underflow its length.
         if self.dmc_left == 0 { return; }
+        // Read-complete feedback just before a bit clock persists until
+        // the packet boundary. If the reader ends before that boundary,
+        // it leaves a one-clock aborted reload even when this is an early
+        // bit of the packet rather than its last bit.
+        if matches!(self.dmc_timer,1|2) { self.dmc_reload_latched = true; }
         self.dmc_left -= 1;
         if self.dmc_left == 0 {
             if self.dmc_r[0] & 64 != 0 {
                 self.dmc_restart()
             } else {
-                // A one-byte load can disable its reader in the APU cycle
-                // before that byte enters the shifter. The reference keeps
-                // the resulting single halt, but not the later-chip extra
-                // full reload when this implicit stop is one clock later.
-                if self.dmc_bits == 1 && matches!(self.dmc_timer, 1 | 2) {
-                    self.dmc_abort_at =
-                        Some(self.cycle + self.dmc_timer as u64 + 1);
-                }
                 if self.dmc_r[0] & 128 != 0 { self.dmc_irq = true }
             }
         }
@@ -452,6 +451,10 @@ impl Apu {
             if self.dmc_bits == 0 {
                 self.dmc_bits = 8;
                 self.dmc_output_clock = Some(self.cycle);
+                if self.dmc_reload_latched && self.dmc_left == 0 {
+                    self.dmc_abort_at = Some(self.cycle);
+                }
+                self.dmc_reload_latched = false;
                 if let Some(v) = self.dmc_buffer.take() {
                     self.dmc_buffer_clock = Some(self.cycle);
                     self.dmc_silent = false;
