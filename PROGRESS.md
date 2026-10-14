@@ -976,3 +976,30 @@ stop/loop/IRQ allvaried, pulse/tri/noisesoundingtoo. Initial16seeds inprogress.
 No productionDMAchanges. 32heldoutnon-DMCstreams allpeak<=2maxRMS.2641after
 quarter/halfoverlapfix. Full30diagnosticsafter>=9MMC3stilldue, andbroad5000
 gamesafteroverlapguarddue (beforeguardcurrenttable4+tri fixes alreadyexact).
+
+## Active DMC load/reload boundary investigation (no production fix yet)
+
+16originalDMC+allchannels streams:15passRMS<=.270peak1/2; seed10failsRMS460.5
+peak6846 firstPCM7108. OriginalROMlengthregisterpatch-to4018 isolation keeps
+CPUtiming/DMC control: DMC-onlystillRMS24.7peak896first7108,noise+DMCpeak6444.
+Trace s10actualenable288734 withbits1,timer4,silenttrue,bufNone,left0; initial
+GET288740(C9C0=0), nativebyteempty288739 thenmissesfirstpacket andfirstDAC
+step292591. Reference starts DMCsteps earlier at289167 (rawMIXfitdecodedDAC
+56,54… vsnativeholds58); plainDACmarker-time±10 cannotexplainmismatch.
+Addedtrace-onlyDMC_STATE before4010/4015; noAPUproductionchange.
+
+Neworiginal .out/dmc-late-start enable800..809, length0(singlebyte)or1(17bytes),
+C800FF/C801zero,DAC64noearlyreset. ALLsinglebytecasesmatch; multi-bytecases
+802/803 and804/805 failRMS120.6/149.2peak1629/1680, otherspeak1. So this is
+multi-byteinitialloadstraddlingfirstbyteclock809, notgeneralbyteclockphase.
+Nativeenable802 HALT806/GET808 thenreload809/GET812; enable804HALT808/GET810
+late thenreload1241/GET1244. FFsignature: ref802firstdiffsample29 afterfirst
+FFpacket, ref804diffsample17 earlierFFpacket. DoubleFFrepeatDAC-onlyreplay
+DOES NOTmatch (notduplicatebyte). Testing ordinary vsone-silentpacket DAC-
+onlyreplays now; likelyref802losesreload809 because DMAcooldown, ref804
+acceptsone-clock-latefill intooutputshifter andprefetchesnextbyte early,
+but onlyifreadercontinues (singlebytelastcounter0 suppresseslatefill).
+Needprovebothrawmodels beforeimplementinggenericpipeline state. Current
+allsourceprodacceptedexceptnewtrace-onlyprint; WASM stillacceptedCart9/APU.
+Currentstabledefaultnative .out/run-a12-nine-trial / .out/run-frame-clock-overlap;
+trace .out/run-trace-dmc-state. Lastdefaultbinarymaytrace untilnextbuild.

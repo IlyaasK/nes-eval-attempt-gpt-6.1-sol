@@ -308,6 +308,9 @@ impl Bus {
                     eprintln!("DMC_GET {} {:04x} {:04x} {}", self.cycles,
                         a, self.dma_halt_addr, v);
                     self.apu.dmc_supply(v);
+                    if self.apu.dmc_need() {
+                        self.dmc_pending_at = Some(self.cycles + 1);
+                    }
                     self.dmc_active = false;
                     self.dmc_forced = false;
                     self.dmc_stage = None;
@@ -353,9 +356,13 @@ impl Bus {
             self.dmc_pending_at = Some(t);
             self.dmc_forced = true;
         }
-        if !dmc_needed && self.apu.dmc_need() && !self.dmc_active {
+        if self.apu.dmc_need() && !self.dmc_active && self.dmc_pending_at.is_none()
+            && (!dmc_needed || self.apu.dmc_output_clock == Some(self.cycles))
+            && self.last_dmc_get != Some(self.cycles - 1) {
             // The reader requests RDY in the PUT phase which transfers the
             // sample buffer to the output shifter, including this clock.
+            // The first clock after a get cannot start a second request;
+            // an empty packet retries on its next output boundary.
             self.dmc_pending_at = Some(self.cycles + if self.cycles & 1 == 0 { 1 } else { 0 });
         }
         self.ppu.tick(&mut self.cart);
@@ -978,6 +985,35 @@ mod unofficial_tests {
 mod dma_timing_tests {
     use super::*;
 
+    #[test]
+    fn dmc_initial_load_straddling_output_boundary_loses_or_accelerates_a_reload() {
+        for (length,enable,last_get,address,left) in [
+            (1u8,802u64,808,0xc801,16),
+            (1,804,814,0xc802,15),
+            (1,806,812,0xc801,16),
+            (0,804,810,0xc801,0),
+        ] {
+            let mut rom = vec![0;16+32768];
+            rom[..4].copy_from_slice(b"NES\x1a");
+            rom[4] = 2;
+            let mut code = vec![0x78,0xa9,64,0x8d,0x17,0x40,
+                0xa9,15,0x8d,0x10,0x40,0xa9,64,0x8d,0x11,0x40,
+                0xa9,32,0x8d,0x12,0x40,0xa9,length,0x8d,0x13,0x40];
+            code.extend(std::iter::repeat_n(0xea,((enable-46)/2) as usize));
+            code.extend_from_slice(&[0xa9,16,0x8d,0x15,0x40]);
+            let end = 0x8000+code.len() as u16;
+            code.extend_from_slice(&[0x4c,end as u8,(end>>8) as u8]);
+            rom[16..16+code.len()].copy_from_slice(&code);
+            rom[16+0x4800] = 255;
+            rom[16+32764..16+32766].copy_from_slice(&0x8000u16.to_le_bytes());
+            let mut nes = Nes::new(Cart::load(&rom).unwrap());
+            while nes.bus.borrow().cycles < 819 { nes.clock(); }
+            let b = nes.bus.borrow();
+            assert_eq!(b.last_dmc_get,Some(last_get));
+            assert_eq!(b.apu.dmc_addr,address);
+            assert_eq!(b.apu.dmc_left,left);
+        }
+    }
     #[test]
     fn oam_dma_gets_have_even_parity_and_stall_for_513_or_514_cycles() {
         for (prefix, expected_stall) in [(vec![], 513), (vec![0x24, 0], 514)] {

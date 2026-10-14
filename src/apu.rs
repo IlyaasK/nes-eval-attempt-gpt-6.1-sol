@@ -198,6 +198,7 @@ pub struct Apu {
     pub dmc_abort_at: Option<u64>,
     pub dmc_extra_at: Option<u64>,
     dmc_buffer_clock: Option<u64>,
+    pub dmc_output_clock: Option<u64>,
     dmc_buffer: Option<u8>,
     dmc_shift: u8,
     dmc_bits: u8,
@@ -233,6 +234,7 @@ impl Apu {
             dmc_abort_at: None,
             dmc_extra_at: None,
             dmc_buffer_clock: None,
+            dmc_output_clock: None,
             dmc_buffer: None,
             dmc_shift: 0,
             dmc_bits: 8,
@@ -375,6 +377,16 @@ impl Apu {
                 if self.dmc_r[0] & 128 != 0 { self.dmc_irq = true }
             }
         }
+        // A continuing reader can deliver the first byte one clock after
+        // an empty output boundary. The reference accepts that byte into
+        // the new shifter packet and immediately prefetches the next one.
+        // An implicitly ended one-byte reader does not perform this handoff.
+        if self.dmc_left != 0 && self.dmc_silent &&
+            self.dmc_output_clock == Some(self.cycle - 1) {
+            self.dmc_buffer = None;
+            self.dmc_shift = v;
+            self.dmc_silent = false;
+        }
     }
     pub fn status(&mut self, open: u8) -> u8 {
         let v =
@@ -433,6 +445,7 @@ impl Apu {
             self.dmc_bits -= 1;
             if self.dmc_bits == 0 {
                 self.dmc_bits = 8;
+                self.dmc_output_clock = Some(self.cycle);
                 if let Some(v) = self.dmc_buffer.take() {
                     self.dmc_buffer_clock = Some(self.cycle);
                     self.dmc_silent = false;
