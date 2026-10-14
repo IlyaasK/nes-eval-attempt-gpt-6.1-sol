@@ -1923,3 +1923,29 @@ OAMprobe--read-reg2002 nowincludes2002inreplayer registerset (initialzero
 statusrunwasINVALIDbecausefilterskippedREAD2; reranrealrefsproperly).
 PendingIRQ36mean3926,best5exactUNCHANGE; old30A12CPU/MMC3BG52/SP72allbaseline
 exact. S2remainingOAMREAD21706096vsref98, andPPUwrite-only14k/mixed10kpix.
+
+## Accepted107: MMC3 CPU-phase A12 filtering (18:31 UTC)
+RejectedGPIO hold103dur1..3:mean4308..5136vsbase3926, loses2exactcases;
+off-render PALGPIO102shadow/noINC/both NOdifference36(renderloopPALnever
+qualifiedduringblank), notadopted. RejectedCPU104CartIRQsampleafterPPU
+first/2nd/3rd (keepAPUpresample) means3930/4278/4270losesexactcases.
+Rejected105CartIRQlatchprevphase0/1/2means4541/4525/3933also losesexactcases.
+OfflineMMC3docs saysA12qualifiesafterTHREEM2fallingedges. GlobalM2filter106
+floorclockphases0/1/2 +lowlatency0/1 improvesnew36 to3420..4079, BUT breaks
+20/154oldBG/SP/CPUcases, rejected. Relevantclockdomain is CPU-port edge:
+newCart.address_cpu uses(dot/3)-(lowSince/3)>=3, normalPPU-fetch address
+retains9dotguard. Read_reg7render immediateGPIO usesCPUphase, lateINC4still
+normalPPUphase. Minimal107read-only qualifies8DOTCPUlowwhen3M2edgespassed;
+read+INC/allotherCPUports variants identical36, chosenMINIMALread-only.
+107new36mean3926.09->3420.22 (13%);7lowerrorstreams vs5; c0-l1-n0 RMS5990
+->.71 /c0-l0-n0 6462->.74 /c24-l0-n2 6458->37.26. Somealreadybadcasesworse
+~50..500 butall5previouslowerrorstreamsremainexacttiming;old154allcounts
+/images unchangedmaxRMS.7555peak3. Genericclockphase-source API,noROMcases.
+74unitsPASSinclCPUphase3M2 vsPPU8DOTguard test. All20kgameframes/audiopeak1
+exact;30diagimages/countsexactmaxRMS.025peak1;215DMAimages/countsexactpeak1.
+RequiredWASM107rebuiltandABI60callsMMC3c0-l1-n0checked (log abi107-mmc3-read).
+Saved .out/{cart,ppu}107-accepted.rs (CPU/APU62unchanged). Runtimecurrently107.
+Remainingvideo mixed10306pixels/write14064;audio mixedmean119.46; remaining
+OAMREADS2first21706096vs98 mayOAMDATA renderwrites incrementinternalN vsCPU
+addressonly. Next controlledrenderWRITE4phaseprobe. MMC3IRQ36still29bad
+streams(mean3420); truecycleaccuracy notachieved. Continue.
