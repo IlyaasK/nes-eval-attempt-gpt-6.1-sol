@@ -1246,6 +1246,23 @@ mod dmc_dma_tests {
     }
 
     #[test]
+    fn restarting_with_a_buffered_sample_preserves_the_initial_load_delay() {
+        let (mut nes,_) = fixture(None);
+        while nes.bus.borrow().cycles < 700 { nes.clock(); }
+        nes.bus.borrow_mut().raw_write(0x4015,0);
+        while nes.bus.borrow().cycles < 808 { nes.clock(); }
+        nes.bus.borrow_mut().raw_write(0x4015,16);
+        while nes.bus.borrow().cycles < 811 { nes.clock(); }
+        assert_eq!(nes.bus.borrow().last_dmc_get,Some(52));
+        assert!(!nes.bus.borrow().dmc_active);
+        while nes.bus.borrow().cycles < 814 { nes.clock(); }
+        let b=nes.bus.borrow();
+        assert_eq!(b.last_dmc_get,Some(814));
+        assert_eq!(b.apu.dmc_addr,0xc801);
+        assert_eq!(b.apu.dmc_left,16);
+    }
+
+    #[test]
     fn an_aborted_reload_keeps_its_address_until_the_next_output_packet() {
         for restart in [900,1300] {
             let (mut nes,_) = fixture(None);

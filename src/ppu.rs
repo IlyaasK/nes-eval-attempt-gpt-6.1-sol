@@ -21,6 +21,12 @@ pub struct Ppu {
     pal: [u8; 32],
     v: u16,
     pending_v: Option<(u16,u64)>,
+    fetch_addr: u16,
+    read_hold_active:bool,
+    read_hold_high:bool,
+    read_hold:u8,
+    data_reads: std::collections::VecDeque<u64>,
+    data_incs: std::collections::VecDeque<u64>,
     t: u16,
     x: u8,
     w: bool,
@@ -77,6 +83,12 @@ impl Ppu {
             pal: [0; 32],
             v: 0,
             pending_v: None,
+            fetch_addr: 0,
+            read_hold_active:false,
+            read_hold_high:false,
+            read_hold:0,
+            data_reads: std::collections::VecDeque::new(),
+            data_incs: std::collections::VecDeque::new(),
             t: 0,
             x: 0,
             w: false,
@@ -143,6 +155,7 @@ impl Ppu {
     }
     fn read_mem(&mut self, c: &mut Cart, a: u16) -> u8 {
         let a = a & 0x3fff;
+        self.fetch_addr = a;
         c.address(a, self.ticks);
         match a {
             0..=0x1fff => c.chr_read(a),
@@ -151,6 +164,7 @@ impl Ppu {
         }
     }
     fn read_fetch(&mut self, c: &mut Cart, a: u16) -> u8 {
+        self.fetch_addr = a & 0x3fff;
         if c.mapper != 1 { return self.read_mem(c, a); }
         let a = a & 0x3fff;
         // MMC1 expansion outputs follow the completed rendering fetch one
@@ -165,6 +179,7 @@ impl Ppu {
     }
     fn write_mem(&mut self, c: &mut Cart, a: u16, val: u8) {
         let a = a & 0x3fff;
+        self.fetch_addr = a;
         c.address(a, self.ticks);
         match a {
             0..=0x1fff => c.chr_write(a, val),
@@ -242,6 +257,17 @@ impl Ppu {
             }
             7 => {
                 let a = self.v & 0x3fff;
+                if self.rendering_line() {
+                    self.data_reads.push_back(self.ticks+3);
+                    self.data_incs.push_back(self.ticks+4);
+                    return if a>=0x3f00 {
+                        let v=(self.pal[Self::pi(a)] & if self.mask&1!=0 {48} else {63}) | (open&192);
+                        self.bus_set(v,63); v
+                    } else {
+                        let v=self.buf; self.bus_set(v,255); v
+                    };
+                }
+                self.read_hold_active=false;
                 let data = self.read_mem(c, a);
                 let v =
                     if a >= 0x3f00 {
@@ -424,6 +450,7 @@ impl Ppu {
         let tall = self.ctrl & 32 != 0;
         row &= if tall { 15 } else { 7 };
         if attr & 128 != 0 { row ^= if tall { 15 } else { 7 } }
+        if i >= self.next_count { row = if tall {8} else {0}; }
         if tall {
             ((tile as u16 & 1) << 12) + ((tile as u16 & 254) * 16) +
                     ((row as u16 & 8) << 1) + (row as u16 & 7)
@@ -549,7 +576,7 @@ impl Ppu {
                     0 => {
                         self.load_shift();
                         let a = 0x2000 | (self.v & 0xfff);
-                        self.bg_fetch_low = a as u8;
+                        self.bg_fetch_low = if self.read_hold_active {self.read_hold} else {a as u8};
                         self.read_fetch(c,a);
                     }
                     1 => {
@@ -561,7 +588,7 @@ impl Ppu {
                     2 => {
                         let a = 0x23c0 | (self.v & 0xc00) | ((self.v >> 4) & 0x38) |
                                 ((self.v >> 2) & 7);
-                        self.bg_fetch_low = a as u8;
+                        self.bg_fetch_low = if self.read_hold_active {self.read_hold} else {a as u8};
                         self.read_fetch(c,a);
                     }
                     3 => {
@@ -573,21 +600,27 @@ impl Ppu {
                         self.bg_ready = true;
                         let a = ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
                             + ((self.v >> 12) & 7);
-                        self.bg_fetch_low = a as u8;
+                        self.bg_fetch_low = if self.read_hold_active {self.read_hold} else {a as u8};
+                        self.fetch_addr = (a&0x3f00)|self.bg_fetch_low as u16;
+                        if !self.read_hold_high {self.read_hold_active=false;}
                     }
                     5 => {
                         let a = ((self.ctrl as u16 & 16) << 8) |
                             ((self.tile as u16 * 16) & 0xf00) | self.bg_fetch_low as u16;
+                        self.fetch_addr = a;
                         self.patlo = c.chr_read(a);
                     }
                     6 => {
                         let a = ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
                             + ((self.v >> 12) & 7) + 8;
-                        self.bg_fetch_low = a as u8;
+                        self.bg_fetch_low = if self.read_hold_active {self.read_hold} else {a as u8};
+                        self.fetch_addr = (a&0x3f00)|self.bg_fetch_low as u16;
+                        if self.read_hold_high {self.read_hold_active=false;}
                     }
                     7 => {
                         let a = ((self.ctrl as u16 & 16) << 8) |
                             ((self.tile as u16 * 16) & 0xf00) | self.bg_fetch_low as u16;
+                        self.fetch_addr = a;
                         self.pathi = c.chr_read(a);
                         self.inc_x();
                     }
@@ -672,6 +705,26 @@ impl Ppu {
             if self.scan == 261 && (280..=304).contains(&d) {
                 self.v = (self.v & !0x7be0) | (self.t & 0x7be0);
             }
+        }
+        while self.data_reads.front().is_some_and(|&at|at<=self.ticks) {
+            self.data_reads.pop_front();
+            let a=if d==336 {0x2000|(self.v&0xfff)} else {self.fetch_addr&0x3fff};
+            self.buf=match a {
+                0..=0x1fff => c.chr_read(a),
+                0x2000..=0x3eff => self.nt[c.nt_index(a)],
+                _ => self.pal[Self::pi(a)],
+            };
+            self.read_hold=self.buf;
+            self.read_hold_active=true;
+            self.read_hold_high=((1..=255).contains(&d)||(321..=331).contains(&d)) && matches!(d&7,4|5);
+
+        }
+        while self.data_incs.front().is_some_and(|&at|at<=self.ticks) {
+            self.data_incs.pop_front();
+            if self.rendering_line() {
+                self.inc_x();
+                if !(d==256 && self.render_history&2!=0) { self.inc_y(); }
+            } else { self.inc_v(c); }
         }
         if self.scan < 240 && (1..=256).contains(&d) { self.render_pixel() }
         self.render_history = ((self.render_history << 1) | self.rendering() as u8) & 15;

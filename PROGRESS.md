@@ -1546,3 +1546,26 @@ Mostnewerrors phaseclasscoincidentXincrements =>bufferfilldelay3 doesNOT
 proveincrementdelay3. Needseparatelymeasureincrementtiming/collisions.
 Current .out/ppu-renderread-empty-base.rs trial; building7incrementvariants
 /tmp/ppu_read_increment_trials.py. Requiredartifact staysvalidated59.
+
+## New60+ experiments
+256freshAPU/DMC/OAM seeds700..955 (.out/apu-dma-heldout59) allcounts/images
+exact but7audioerrors777/787/858/870/879/900/933. Fivechannelisolatesgenerated,
+DMC-onlyallhaveerror. DACedgefits proveCPUoffset:777/787-1,858+2,900-2,933+1.
+879/870largeDMCbyteerror beforeCPUoffsetfitable. NewCPU dmc_start_at deadline
+setANY4015restart(readerleft0) regardlessBUFoccupied, appliedtofutureordinary
+packetrequest untilfirstnormalHALT. Fixes777 AND787, all13buffered-restart
+boundaryvariants peak1 (old3variants peak62..71). CPU60candidate savedbinary
+.out/run-enable-deadline-trial;old128/88/96/215checks pending. Artifact59still.
+SourceCPUcandidateautosupervisorcancommit; valid59 backupcpu59-accepted.
+
+PPUreadinc +4end noXcollapses best; plusBUFfill+3. Controlled115scroll
+casesold1399wrongpixels, rawprototype28231, inc4nocollapse710. LowADDRlatch
+corruption proved20simplepalettedCHR-address-encodedvariants: READd22 bgLOW
+wrongaddressCC9 vsnormalC95 (NTtileC9onlatch), READd25 LOW/HIGHbothCA1 (BUFattr
+A1). HeldBUFFERlowaddr onnextBGaddrphases changesNTfetches/tile selection
+whenreadBUFfromCHR. Trialreadhold durations4..10 afterBUFFILL: min4 ->375
+pixels64badcases; shouldtrydur1..3 andphase-dependenthardwarestrobe release.
+AlltrialPPUbackups .out/ppu-read-holdN.rs/native .out/run-ppu-read-holdN.
+Currently sourcePPUinc4baseunvalidated; artifact59still. Original74BUFcases
+emptySProw0/8(tall) match, extra64endlineBUFcasesonefailREADdot333 ->bufuses
+nextNTat337 ratherthanHI336. Needrefine. NeveradoptonaudioonlywithoutRGB.
