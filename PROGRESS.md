@@ -1510,3 +1510,39 @@ address5/7 andNT/attr1/3, SPread_fetch on261/263; delayedincXYafterbufpeek.
 No productionchanges forPPUDATAyet. PendingincrementmustavoidnormalX/Y
 incrementcollisions; IRQpinspossiblymustnot bechangedbybufpeek. Othermodel
 'preincrementmemoryV' matchesseed1bycoincidencebutseed0/2 falsify it.
+
+## Current read/address experiments (unvalidated PPU; artifact remains57)
+
+Cart58 min8KiB mapper0/1/4, noRAMmapper2/3 confirmedall30variants and6
+NROMsmallRAMalias variants. CPU59 savedabortedDMCaddress fixes568 but
+regresses504 because latchmustexpire atnextOUTPUTpacket. Controlled64
+restartvariants PROVEaddresssurvives before1241packetbutnotafter, regardless
+4012write/second4015disable. CPU nowclearsaddress whenAPUdmc_output_clock==cycle,
+newunit usesoldC801FF vsnewC9003C andnewpointerC901. Regressionspending.
+Savednever-expirefailed CPU .out/cpu-stale-dmc-unexpired-trial.rs.
+
+PPUcurrentpendingrenderREAD+3 FETCHbuffer dramaticallyreducescapturedREAD
+errors4streams~60each->25/20/23/7.16streams audioRMS138..555 vsold550..1000.
+Controlled74phaseprobes matches69;5SPemptyfetch casesexpectedCHR0FF0/0FF8
+butnativeFF2/FFA. EmptySPfetch mustforce row0 (notoldflippedscanYrow), invisible
+inRGBbecauselow/highzeroedbutreadbusdiffers. Currentdata_readsPpu usesenddot
+fetchafter3 incXY, sprite-fetch cache257/261 etc. Notadopted. Nativefixed
+.out/run-render-read-prototype;trace .out/run-renderread-trace;backup
+.out/ppu-renderread-prototype.rs. RequiredWASM57 unchanged.
+
+## Accepted59 (RAM58 + DMC address expiry), artifact updated
+59units pass. DMC address latch expires at next output packet (actualAPU
+output_clock), controlled32 restart/base/secondstop variants allpeak1.
+128newstreams allcounts/imagesexact,maxRMS.24821peak2 (568fixed,504noerror).
+88old+96old streams and215DMA probes pass, 30diagnostics allimages/counts
+exact maxRMS.025014peak1. Fourvaried5000game streams all20kimages/counts
+exact/unchangedaudiopeak1. Native .out/run-address-expiry59, backups
+.out/{cpu,cart,ppu}59-accepted.rs; WASM59 builtandABIvalidatedrestartprobe.
+
+PPUreadbufferfetch+3 prototype notadopted. EmptySPfetch correctedrow0/8(tall
+lasttile) reduces5failures->0 in74controlledREADbufferphasecases. However
+separate115singleREADscroll-imagecases prototype28231wrongpixels vsold1399!
+Mostnewerrors phaseclasscoincidentXincrements =>bufferfilldelay3 doesNOT
+proveincrementdelay3. Needseparatelymeasureincrementtiming/collisions.
+Current .out/ppu-renderread-empty-base.rs trial; building7incrementvariants
+/tmp/ppu_read_increment_trials.py. Requiredartifact staysvalidated59.

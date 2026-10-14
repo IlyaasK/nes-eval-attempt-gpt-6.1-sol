@@ -440,6 +440,7 @@ impl Ppu {
         let tall = self.ctrl & 32 != 0;
         row &= if tall { 15 } else { 7 };
         if attr & 128 != 0 { row ^= if tall { 15 } else { 7 } }
+        if i >= self.next_count { row = if tall {8} else {0}; }
         if tall {
             ((tile as u16 & 1) << 12) + ((tile as u16 & 254) * 16) +
                     ((row as u16 & 8) << 1) + (row as u16 & 7)

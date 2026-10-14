@@ -227,6 +227,11 @@ impl Bus {
         // arbitrates the CPU's queued bus operation.
         self.tick();
         let next_cycle = self.cycles;
+        // A cancelled reload retains its address only for the current
+        // output packet. The next byte boundary releases that latch.
+        if self.apu.dmc_output_clock == Some(next_cycle) {
+            self.dmc_aborted_addr = None;
+        }
         let get_cycle = next_cycle & 1 == 0;
         let cpu_read = matches!(op, CycleOp::Read(_));
         let aborted_reload = self.apu.dmc_abort_at == Some(next_cycle);
@@ -1229,6 +1234,30 @@ mod dmc_dma_tests {
         while nes.bus.borrow().oam_active { nes.clock(); }
         assert_eq!(nes.bus.borrow().cycles-start,515);
         assert!(!nes.bus.borrow().dmc_aborted_get);
+    }
+
+    #[test]
+    fn an_aborted_reload_keeps_its_address_until_the_next_output_packet() {
+        for restart in [900,1300] {
+            let (mut nes,_) = fixture(None);
+            while nes.bus.borrow().cycles < 807 { nes.clock(); }
+            nes.bus.borrow_mut().raw_write(0x4015,0);
+            nes.clock(); nes.clock();
+            assert_eq!(nes.bus.borrow().dmc_aborted_addr,Some(0xc801));
+            {
+                let mut b = nes.bus.borrow_mut();
+                b.cart.prg[0x4900] = 0x3c;
+                b.raw_write(0x4012,36);
+            }
+            while nes.bus.borrow().cycles < restart { nes.clock(); }
+            nes.bus.borrow_mut().raw_write(0x4015,16);
+            while nes.bus.borrow().cycles < restart+6 { nes.clock(); }
+            let b = nes.bus.borrow();
+            assert_eq!(b.last_dmc_get,Some(restart+6));
+            assert_eq!(b.open,if restart==900 {255} else {0x3c});
+            assert_eq!(b.apu.dmc_addr,0xc901);
+            assert_eq!(b.dmc_aborted_addr,None);
+        }
     }
 
     #[test]
