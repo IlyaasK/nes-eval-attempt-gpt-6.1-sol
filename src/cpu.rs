@@ -156,6 +156,8 @@ pub struct Bus {
     keys: u8,
     shift: [u8; 2],
     strobe: bool,
+    pad_oe: Option<u16>,
+    pad_bit: u8,
     dma: Option<u8>,
     nmi: bool,
     last_irq: bool,
@@ -185,6 +187,8 @@ impl Bus {
             keys: 0,
             shift: [0; 2],
             strobe: false,
+            pad_oe: None,
+            pad_bit: 0,
             dma: None,
             nmi: false,
             last_irq: false,
@@ -263,6 +267,7 @@ impl Bus {
                     self.oam_have_data = true;
                 }
                 DmaAction::OamPut(v) => {
+                    self.pad_oe = None;
                     let a = self.ppu.oam_addr;
                     self.ppu.oam[a as usize] = v;
                     self.ppu.oam_addr = a.wrapping_add(1);
@@ -307,6 +312,7 @@ impl Bus {
         for _ in 0..2 { self.ppu.tick(&mut self.cart) }
     }
     fn raw_read(&mut self, a: u16) -> u8 {
+        if a != 0x4016 && a != 0x4017 { self.pad_oe = None; }
         let v =
             match a {
                 0..=0x1fff => self.ram[a as usize & 2047],
@@ -317,11 +323,15 @@ impl Bus {
                     let b =
                         if self.strobe {
                             if i == 0 { self.keys & 1 } else { 0 }
+                        } else if self.pad_oe == Some(a) {
+                            self.pad_bit
                         } else {
                             let b = self.shift[i] & 1;
                             self.shift[i] = (self.shift[i] >> 1) | 128;
                             b
                         };
+                    self.pad_oe = Some(a);
+                    self.pad_bit = b;
                     (self.open & 224) | b
                 }
                 0x4000..=0x401f => self.open,
@@ -334,20 +344,29 @@ impl Bus {
         // External RAM, cartridge and PPU decode the DMA address. The
         // internal 2A03 register decoder instead keeps the halted CPU's
         // high address bits and takes only the DMA address's low five bits.
+        let previous_oe = self.pad_oe;
+        let previous_bit = self.pad_bit;
         let external = if (0x4000..=0x401f).contains(&a) {
             self.open
         } else { self.raw_read(a) };
         let internal = (self.dma_halt_addr & 0xffe0) | (a & 31);
         self.open = external;
-        let value = match internal {
-            0x4015..=0x4017 => self.raw_read(internal),
-            _ => external,
+        let value = if internal == 0x4016 || internal == 0x4017 {
+            // A shadow read of the same controller keeps /OE asserted even
+            // while the cartridge is driving the external DMA bus.
+            self.pad_oe = previous_oe;
+            self.pad_bit = previous_bit;
+            self.raw_read(internal)
+        } else {
+            self.pad_oe = None;
+            if internal == 0x4015 { self.raw_read(internal) } else { external }
         };
         self.open = value;
         value
     }
 
     fn raw_write(&mut self, a: u16, v: u8) {
+        self.pad_oe = None;
 
         #[cfg(feature="trace")]
         if (0x4000..=0x4017).contains(&a) {
@@ -1023,6 +1042,38 @@ mod dmc_dma_tests {
         assert_eq!(puts, 256);
         assert_eq!(nes.bus.borrow().cycles - start, 515);
         for i in 0..256 { assert_eq!(nes.bus.borrow().ppu.oam[i], i as u8); }
+    }
+
+    #[test]
+    fn a_controller_clocks_once_per_contiguous_output_enable() {
+        let (nes, _) = fixture(None);
+        let mut b = nes.bus.borrow_mut();
+        b.keys = 2;
+        b.raw_write(0x4016, 1);
+        b.raw_write(0x4016, 0);
+        assert_eq!(b.raw_read(0x4016) & 1, 0);
+        assert_eq!(b.raw_read(0x4016) & 1, 0);
+        assert_eq!(b.raw_read(0x4016) & 1, 0);
+        b.raw_read(0x8000);
+        assert_eq!(b.raw_read(0x4016) & 1, 1);
+    }
+
+    #[test]
+    fn a_dmc_shadow_read_keeps_the_same_controller_output_enable() {
+        let (nes, _) = fixture(None);
+        let mut b = nes.bus.borrow_mut();
+        b.keys = 2;
+        b.raw_write(0x4016, 1);
+        b.raw_write(0x4016, 0);
+        assert_eq!(b.raw_read(0x4016) & 1, 0);
+        b.dma_halt_addr = 0x4016;
+        b.cart.prg[0x4816] = 255;
+        // The original shadow-read probe also confirms $E0 as the DMC
+        // sample: the reference audio drops five bits then rises three.
+        assert_eq!(b.raw_dma_read(0xc816), 0xe0);
+        assert_eq!(b.raw_read(0x4016) & 1, 0);
+        b.raw_read(0x8000);
+        assert_eq!(b.raw_read(0x4016) & 1, 1);
     }
 
     #[test]
