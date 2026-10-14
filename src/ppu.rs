@@ -333,7 +333,7 @@ impl Ppu {
     }
     fn evaluate(&mut self) {
         let d = self.dot;
-        if d == 1 {
+        if d == 1 || (d == 65 && self.scan != 261) {
             self.eval_pos = 0;
             self.eval_n = self.oam_addr >> 2;
             self.eval_m = 0;
@@ -361,7 +361,14 @@ impl Ppu {
             }
             return
         }
-        if self.eval_done { return }
+        if self.eval_done {
+            if d & 1 != 0 { self.eval_latch = self.oam_read(self.eval_n*4); }
+            else {
+                self.eval_n = self.eval_n.wrapping_add(1) & 63;
+                self.eval_latch = 255;
+            }
+            return;
+        }
         if d & 1 != 0 {
             self.eval_latch = self.oam_read(self.eval_n.wrapping_mul(4) | self.eval_m);
             return
@@ -407,7 +414,7 @@ impl Ppu {
                 self.eval_n = self.eval_n.wrapping_add(1)
             }
         }
-        if self.eval_n >= 64 { self.eval_n = 0; self.eval_done = true }
+        if self.eval_n >= 64 { self.eval_n = 0; self.eval_m = 0; self.eval_done = true }
         // The evaluator and CPU/DMA share OAMADDR. Forced blanking before
         // evaluation finishes preserves this byte address, so a subsequent
         // DMA can rotate the sprite list if software does not write $2003.
