@@ -36,6 +36,9 @@ PPU_OPEN = -1
 .ifndef RELOAD_DELAY
 RELOAD_DELAY = 0
 .endif
+.ifndef STORE_TARGET
+STORE_TARGET = -1
+.endif
 .segment "HEADER"
 .byte "NES",$1a,2,0,0,0
 .res 8,0
@@ -111,6 +114,10 @@ reload_wait:
  .byte CPU_OPCODE,$10
 .else
  .byte CPU_OPCODE,<CPU_OPERAND,>CPU_OPERAND
+.endif
+.if STORE_TARGET >= 0
+ sta STORE_TARGET
+ lda $2007
 .endif
 .if CAPTURE_FLAGS
  php

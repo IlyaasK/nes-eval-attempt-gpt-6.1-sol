@@ -612,3 +612,56 @@ bundleddiagnostic rerun .out/deferred-dmc-diagnostics.log completed; compare
 itsimages/audio next. Dense loopingDMC+PPUDATAstream5alignmentprobes running
 (.out/ppu-dmc-stream); theyexercise reloadcollisions, notonlyfirstload.
 Original tools/ppu_dmc_stream_probe.s/tools/nrom32_chr.cfg.
+
+Bundled diagnostics rechecked afterdeferredDMCfix: all30finalimages/counts
+matchagain, maxRMS .030205 peak2. Results
+.out/deferred-dmc-diagnostic-comparison.json. Wasmcheckedfailinginitialload
+probe now hashesFB52514245/audio1665564754,2184samples.
+
+## Active audio investigations after dense DMC/PPUDATA stream
+
+Dense stream .out/ppu-dmc-stream/n{0..4}: all87304samplecounts match120frames,
+RMS n0=8.681,n1=.309,n2=6.714,n3=9.281,n4=8.678, peaks136/2/137/137/137.
+These are NOT persistentPPUreaderrors: forty actualreloadisolatedprobes
+allmatchfinalvideo; onlytwohaveaudioerrorsfromDMCstop timing (below).
+StreamfirsterrorPCM2674 coincideswithDMCstep108579 ANDCPU4011write108579.
+NativeMIX108579DAC8 (previousCPUvalue6+2), writeDAC7 samecycle, MIX1085807.
+Reference likelypreservesincrementagainstcoincidentnewDACwrite (9), but
+verifywithoriginaltools/dmc_dac_write_probe.py beforechanging APU. Twenty-
+fourmatrixprobesold64,new0/64/126/127,sample00/FF,CPUwrite862/863/864running
+.out/dmc-dac-write/results.json. FirstactiveDMCoutputclock863. Single-byte
+nonlooping sample avoidsreloadDMA; generatedCPUdelay subtractsinitial3
+DMAcycles. PriorstrictDACreplayofnormalDMCsteps provednormalstep timing
+correct; do NOTgloballyshifttheDMCtimer orresamplingphase.
+
+CorrectreloadprobesRELOAD_DELAY149..153,EXTRA_NOPS0..3,PARITY0/1 (40cases)
+.out/ppu-dmc-reload-real/results.json: allvideomatch. Delay149parity0nops0
+audioRMS7.077, nops1RMS99.999; allothers<1. DMCstopnearbufferempty31625 is
+likelyaborted/unexpectedDMA (documentedinDMA.md). Stop2CPUbeforeempty adds
+oneabortedhalt; stopattheemptycyclemayretainfullpendingreload despite
+left0. InvestigatepreciseCPUwrite timesandsamplebuffercontents beforefix.
+EarlierRELOAD_DELAY34..38 probes30cases were tooearly becausewriting4010
+late preservesdefaulttimer remainder; theydoNOTtestreloadcollision. Actual
+firstbufferempty inppu_dmc_probe.s is31625, not31049. Keepthiscorrection.
+
+Currentnativebinary isdefaulttraceOFF. Trace forstreamn0 is
+.out/ppu-dmc-stream/n0.trace (120framesincludesMIX/WRITE/DMC_HALT/GET/PPU_READ).
+SourcecontainsvalidateddeferredDMCfix and36units; noDMC DAC-write trialyet.
+
+CorrectionafterfirstDMCclockmatrix: ALL24DACwrite862/863/864probesmatch
+audio RMS<.065peak1. Do NOTchangeDMC4011write ordering basedonstream alone.
+A genericFIRfit ofthefirst stream residual proves reference hasone extra
+PPUDATAincrement for the remainderofthat32readblock: add1toallnativeDAC
+levels starting108596 through108909 gives predictedresidual86/133/110/108/
+92/87/71/79/-9/-62/-48, observed -86/-134/-109/-108/-92/-88/-71/-79/9/63/48.
+So stream's audioerror is a missingPPUread, NOTDMCcounter/write ordering.
+DMC_HALTat108580heldDEXopcode8034 afterCPU4011write108579; GET108582, next
+PPUDATAread108591. Previously modeledextraREADonlyduringaddressformation
+is insufficient here. AnotherlikelymissingreadoccurswithDMC_HALT109011
+heldSTA4011highoperand8033,GET109014, CPUwrites109016; nextLDA2007later.
+
+OriginalSTORE_TARGETvariant ofppu_dmc_probe.s doesLDA2007,STA(target),
+LDA2007 nearreload31625 toidentify whetherCPUstores preserve/repeat the
+previousdataportread. Targets4011/6000/2000/4000,3NOPalignments,2parities,
+24cases running .out/ppu-dmc-store/results.json. KeepcurrentCPU fix until
+thisprovidesbettergeneralmodel. NoAPUwrite-order changehasbeenmade.
