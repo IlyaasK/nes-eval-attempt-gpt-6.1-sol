@@ -1165,3 +1165,26 @@ beforeadopt). AcceptedAPUbackup .out/apu-before-latched-dmc-abort.rs. WASM
 stillaccepted49Pulseordering+oldabortpipeline, buildnewnativeinprogress.
 LoopNoStop maskdiff15onlypublishedrow0(notedge) isseparatepotentialframe-
 callback issue, notCPUtiming; investigateafterabortedlatch validated.
+
+## Early-bit read feedback latch fixed pending fullregression (50units)
+
+Newdmc_reload_latched validation: seed113 oldRMS22.20peak815 ->.26035peak2;
+all36bitloadmaskprobes visibleframeedgesexact; all24loop-stopcases now
+RMS<=.04535peak1. TheGET-nearANYbit latchwaitinguntilpacketboundary wasright.
+New50thunit bits4initialget644 (timer2beforebit647), abortnotbefore808,
+packet809 abortifone-byte implicitlyended orreader explicitlystopped;
+continuing17/looponebytereader noabortedpulse (ordinaryreload instead).
+Unit/API/requiredWASM50 buildrunning. 88randomstreams/215sideeffects rerunning.
+SourcePendinglatch isnowaccepted aftertargetedvalidation; noROMdetection.
+
+Nextvideo issue isolated: normalizedmask33000 withloopingDMC NoStop gives
+15differentpixels ONLYpublishednextrow0; actualmaskvisibleedge matches.
+Nativeframecallback pausesDMC onHALT59561 (byte809+432*136,exactPPUframe2dot0).
+Referencelikelyfinishes3moreDMAclocks+2remainingCPUinstructionclocks to59566
+(PPUdot15), paintingfirst15next-framepixels. OAMcanpauseattheboundary as
+previouslyverified, butshortDMC seemsrequiredtofinishalongwithCPUinstruction.
+DoNOTchange beforecontrolledframeprobe/unit/ABIcount comparisons. Accepted
+Nes.run_frame stillold last_dma_cycle suspendboth rule; nextwork shouldtry
+finishpendinginstructionunlessOAMactive, possiblyfinishDMCburstinsideOAM
+beforepausing. Compareloop1maskrefs andexistingOAMsuspensionunit; thenfull
+20krealgameimages/counts and30diag asnewframecallbackcanchangeoutputs.

@@ -468,7 +468,7 @@ impl Ppu {
     /// The frame callback exposes the pixel prepared for the next dot. This
     /// does not advance CPU/PPU time or the sprite-zero/overflow status.
     pub fn publish_next_pixel(&mut self) {
-        if self.scan != 0 || !(1..=256).contains(&self.dot) { return }
+        if self.scan >= 240 || !(1..=256).contains(&self.dot) { return }
         let shifts = (self.lo, self.hi, self.atlo, self.athi);
         let sprites = self.sprites;
         let status = self.status;

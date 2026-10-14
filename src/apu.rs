@@ -532,6 +532,31 @@ mod tests {
     }
 
     #[test]
+    fn read_before_an_early_dmc_bit_latches_a_cancelled_reload_until_packet_end() {
+        for (length,looping,stop,expected) in [
+            (0,false,false,Some(809)), (1,false,true,Some(809)),
+            (0,true,true,Some(809)), (1,false,false,None), (0,true,false,None),
+        ] {
+            let mut apu = Apu::new();
+            while apu.cycle < 22 { apu.tick(); }
+            apu.write(0x4010,15 | if looping {64} else {0});
+            apu.write(0x4013,length);
+            while apu.cycle < 638 { apu.tick(); }
+            apu.write(0x4015,16);
+            while apu.cycle < 644 { apu.tick(); }
+            assert_eq!(apu.dmc_bits,4);
+            apu.dmc_supply(0);
+            if stop {
+                while apu.cycle < 662 { apu.tick(); }
+                apu.write(0x4015,0);
+            }
+            while apu.cycle < 808 { apu.tick(); }
+            assert_eq!(apu.dmc_abort_at,None);
+            apu.tick();
+            assert_eq!(apu.dmc_abort_at,expected);
+        }
+    }
+    #[test]
     fn pulse_timer_reloads_before_a_coincident_sweep_changes_its_period() {
         let mut apu = Apu::new();
         while apu.cycle < 14912 { apu.tick(); }

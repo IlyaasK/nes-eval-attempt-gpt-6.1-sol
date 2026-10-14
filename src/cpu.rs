@@ -927,7 +927,9 @@ impl Nes {
         if self.first_frame { self.first_frame = false; return }
         let frame = self.bus.borrow().ppu.frame;
         while self.bus.borrow().ppu.frame == frame ||
-            (self.pending.is_some() && !self.bus.borrow().last_dma_cycle) {
+            self.pending.is_some() {
+            // Finish the CPU instruction, including a DMA which holds its
+            // read cycle, before returning the completed framebuffer.
             self.clock()
         }
         self.bus.borrow_mut().ppu.publish_next_pixel();
@@ -939,7 +941,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn oam_dma_suspends_at_the_frame_boundary_and_resumes() {
+    fn dmc_dma_at_a_frame_boundary_finishes_its_held_cpu_instruction() {
+        let mut rom = vec![0;16+32768];
+        rom[..4].copy_from_slice(b"NES\x1a");
+        rom[4] = 2;
+        rom[16..20].copy_from_slice(&[0x78,0x4c,1,0x80]);
+        rom[16+32764..16+32766].copy_from_slice(&0x8000u16.to_le_bytes());
+        let mut nes = Nes::new(Cart::load(&rom).unwrap());
+        {
+            let mut b = nes.bus.borrow_mut();
+            b.raw_write(0x4010,79);
+            b.raw_write(0x4012,32);
+            b.raw_write(0x4013,0);
+            b.raw_write(0x4015,16);
+        }
+        nes.run_frame();
+        nes.run_frame();
+        nes.run_frame();
+        assert!(!nes.bus.borrow().dmc_active);
+        assert!(nes.pending.is_none());
+        assert_eq!(nes.bus.borrow().ppu.frame,2);
+    }
+    #[test]
+    fn oam_dma_crossing_the_frame_boundary_finishes_with_its_instruction() {
         let mut rom = vec![0;16+32768];
         rom[..4].copy_from_slice(b"NES\x1a");
         rom[4]=2;
@@ -956,10 +980,8 @@ mod tests {
         nes.run_frame();
         assert_eq!(nes.bus.borrow().cycles,8);
         nes.run_frame();
-        assert!(nes.bus.borrow().oam_active);
-        assert_eq!(nes.bus.borrow().ppu.oam[255],0);
-        nes.run_frame();
         assert!(!nes.bus.borrow().oam_active);
+        assert!(nes.pending.is_none());
         assert_eq!(nes.bus.borrow().ppu.oam[255],255);
     }
 }
