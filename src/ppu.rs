@@ -347,6 +347,8 @@ impl Ppu {
             eprintln!("PPU_WRITE {} {} {} {} {} {} {:04x} {} {}", cycle,
                 self.frame, self.scan, self.dot, r, val, self.v, self.x, self.w);
         }
+        #[cfg(feature="trace")]
+        if r==3 || r==4 {eprintln!("OAM_WRITE {} {} {} {} {} {} {} {} {} {}",cycle,self.frame,self.scan,self.dot,r,val,self.oam_addr,self.eval_n,self.eval_m,self.mask);}
         match r {
             0 => {
                 self.ctrl = val;
@@ -688,6 +690,7 @@ impl Ppu {
         }
         if let Some(a) = self.cart_addr_pending.take() { c.address(a, self.ticks); }
         let d = self.dot;
+        // The evaluator samples OAMADDR before dot-one CPU port accesses.
         if d==0 {self.eval_start_addr=self.oam_addr;}
         if d==257 {self.sprite_fetched=false;}
         if d==1 {
@@ -954,6 +957,23 @@ mod tests {
         assert_eq!(p.read_reg(&mut c,4),231);
         p.write_reg(&mut c,1,0,50000);
         assert_eq!(p.read_reg(&mut c,4),200);
+    }
+
+    #[test]
+    fn evaluation_captures_the_oam_start_address_before_dot_one_cpu_accesses() {
+        let mut rom=vec![0;16+16384];
+        rom[..4].copy_from_slice(b"NES\x1a");rom[4]=1;
+        let mut c=Cart::load(&rom).unwrap();
+        for data in [false,true] {
+            let mut p=Ppu::new();p.scan=160;p.dot=0;p.mask=20;
+            p.oam.fill(255);
+            p.oam[..8].copy_from_slice(&[200,160,170,16,161,200,200,160]);
+            p.tick(&mut c);
+            if data {p.write_reg(&mut c,4,85,40000);} else {p.write_reg(&mut c,3,1,40000);}
+            assert_eq!(p.oam_addr,if data {4} else {1});
+            while p.dot<66 {p.tick(&mut c);}
+            assert_eq!(p.read_reg(&mut c,4),200);
+        }
     }
 
     #[test]
