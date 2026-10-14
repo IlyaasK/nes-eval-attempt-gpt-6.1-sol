@@ -1090,3 +1090,55 @@ occursAFTERfirstdiscrepancy. Testingnormalizedinitialen638,DAC646planned,
 stop659planned(actual662), marker1059planned withloop/nonloop length1/17,
 severalstopoffsets; generatorfirststop650impossible4clockdifferent-valuewrite
 fixed655+. Currentloop-stopjob90300 maycompleted; inspectresults.
+
+## Pulse timers before sweep accepted; one unresolved DMC stop/timestamp case
+
+Pulse timer ordering trialPASSED: minimalHalf14935 oldRMS91.47peak201 now
+.3983peak1; originalmixedDMC/OAMseed109 old14.65peak207 now.1770peak1;
+standalonepulse-registerreplay old15.23peak226 now.0741peak1. All88retained
+randomAPU/APU+DMC/APU+DMC+OAMstreams:87peak<=2; onlyoldseed113stillfails.
+.out/pulse-sweep-random-regression.json. Thisprovespulse timers mustreload
+oldperiodbeforecoincidentFramehalf changesit (notmutingfreeze orraw-register
+stale-lowreset). 49units pass; fullABI/requiredWASM49 buildrunning. TimerNoise
+staysafterframeclock (independentperiod/LFSR), TriangleandPulsebefore.
+
+48state broad5000gamevalidationfinished: all20000imagesexact,3668206samples,
+RFK .000738/1,RHDE .06150/1,FF .09738/1,Stallar .16647/1. Native/wasmDMCseed10
+41calls: FB-1199743547/audio1704357784,29334samples44100match. Pipelineaccepted.
+
+Unresolved113: strictlocalFloatMIX modelDAC58shift+1CPU fitsrefPCMEXACT at
+774655 vsnative774654. PreviousDAC69 at762639, stopped762652. Normalized
+loop-stop24cases alltinyRMS.1603peak7 (loop/nonloop,length1/17,severalstops)
+andoracleDAC-onlyreplay withnativeGPIO649/1062 offsets doesNOTmatchDMCwave;
+shifting ONLYsecondGPIO1062->1063 givesoracle-to-oracleRMS0/peak0. Shifting
+firstGPIO649bad, so extraoneclockorDMCsubchanneltimestampafterstop, notloop
+specific. NoDMCproductionchange yet. NeedseparateCPUtimingfromaudio byPPU
+maskmarker: clone113patch ONLYtargetDAC58STA to$2001 andcompareemphasisedge.
+Thereare2DAC58codepatterns(positions8100,9429); mapnativeWRITE58timestamps
+orderedtofindone774654. Job61266 running/done (inspect); plainfixed-maskROM
+at774654 controlsPPUMASKclockdelay. Ifclonevideoequal, DMCaudiosubchannel
+schedulingiswrong, notCPUstall. If3pixelsdifference andplainROMmatches,
+actualCPUtime+1. Thisistheremainingactiveinvestigation; avoidguessingfurther
+beforeseeingmaskresults. Defaultnativecurrent49traceOFF. Sourceallaccepted49.
+
+## Mask markers PROVE actualCPUone-cycledebt afterDMCpacket stop
+
+Clone113 ONLYtargetDAC58STA atROM8100 (actual774654; other58atROM9429 actual
+925075) redirectedto$2001. Refemphasis edge row3x50 vsnativex47 (3dotslate),
+6totalFBdifferencesinclnext-framepublishedpixel. Plainfixed$2001ROM at774654
+native/refFB EXACT row3x47. So itisactualCPU+1, notDMCsynthevent timestamp.
+.out/dmc-oam-random/{s113-mask-marker.nes,s113-mask-ref,s113-mask-native}.
+
+NormalizedDMCloop-stop: all24cases (length1/17, loop/nonloop, stop655..790)
+RMS.1603peak7 IDENTICAL. StrictoracleDAC-onlyreplay GPIO649andmarker1062
+failsRMS.1549peak7; shifting ONLYsecondGPIO1062->1063 givesoraclePCM EXACT.
+Shiftingfirst649->650fails. ThisprovesoneextraCPUclock AFTERGPIO649, so
+notloop-specific orsimpleinitialDMA4vs3stall. Marker-maskcontrols33000 now
+comparestop vsignored4018 acrosslength/loopvariants; job58132 running/done.
+Needinspectcontrolresults beforederivingnewabort rule. StillnoDMCchange.
+
+Pulse49fullABI/WASMbuild complete. All30diagnosticscomparisonpending/new49
+runcompleted; generated .out/pulse49-diagnostic-comparison.json whenchecked.
+Currentsourceallaccepted49; defaultnative49traceOFF, .out/run-pulse-sweep-order49.
+ToolTrace_pulse_state48 usesoldPulseordering butcurrentDMC pipeline forevents,
+so doNOTuse itfornewPulse validation (traceonlyhelperoldfields).
