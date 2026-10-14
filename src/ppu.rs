@@ -223,12 +223,6 @@ impl Ppu {
         // evaluation. Clearing secondary OAM can still put $FF on its bus.
         if addr & 3 == 2 { value & 227 } else { value }
     }
-    pub fn begin_cpu_read(&mut self,c:&mut Cart,reg:u16) {
-        if reg&7==7 && self.rendering_line() {
-            let a=self.v&0x3fff;
-            c.address(if a>=0x3f00 {a-0x1000} else {a},self.ticks);
-        }
-    }
     pub fn read_reg(&mut self, c: &mut Cart, reg: u16) -> u8 {
         let open = self.bus_get();
         #[cfg(feature="trace")]
@@ -264,6 +258,10 @@ impl Ppu {
             7 => {
                 let a = self.v & 0x3fff;
                 if self.rendering_line() {
+                    // Cartridge pins see the CPU port address immediately.
+                    // Palette RAM is internal; its external read uses the
+                    // nametable underneath it. The buffer and scroll strobes
+                    // arrive separately, three and four dots later.
                     c.address(if a>=0x3f00 {a-0x1000} else {a},self.ticks);
                     self.data_reads.push_back(self.ticks+3);
                     self.data_incs.push_back((self.ticks+4,a>=0x3f00));
@@ -457,6 +455,8 @@ impl Ppu {
         let tall = self.ctrl & 32 != 0;
         row &= if tall { 15 } else { 7 };
         if attr & 128 != 0 { row ^= if tall { 15 } else { 7 } }
+        // Unused slots fetch row zero even though their secondary OAM
+        // bytes include a vertical flip. Their pixel data is discarded.
         if i >= self.next_count { row = 0; }
         if tall {
             ((tile as u16 & 1) << 12) + ((tile as u16 & 254) * 16) +
@@ -725,6 +725,10 @@ impl Ppu {
                 0x2000..=0x3eff => self.nt[c.nt_index(a)],
                 _ => self.pal[Self::pi(a)],
             };
+            // The CPU read holds the memory byte on the multiplexed low
+            // address latch until the next background pattern strobe.
+            // A read at the attribute-data/low-address overlap releases
+            // that latch on the high pattern strobe instead.
             self.read_hold=self.buf;
             self.read_hold_active=true;
             self.read_hold_high=((1..=255).contains(&d)||(321..=331).contains(&d)) && matches!(d&7,4|5);
@@ -735,6 +739,8 @@ impl Ppu {
             if self.rendering_line() {
                 self.inc_x();
                 self.inc_y();
+                // A palette read retains its external shadow address;
+                // moving the internal scroll counter does not expose CHR.
                 if !palette {c.address(self.v&0x3fff,self.ticks);}
             } else { self.inc_v(c); }
         }
@@ -764,6 +770,24 @@ impl Ppu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rendering_reads_drive_the_mapper_but_palette_reads_keep_the_shadow_bus() {
+        for palette in [false,true] {
+            let mut rom=vec![0;16+32768+8192];
+            rom[..4].copy_from_slice(b"NES\x1a");rom[4]=2;rom[5]=1;rom[6]=0x40;
+            let mut c=Cart::load(&rom).unwrap();
+            c.write(0xc000,0,0);c.write(0xc001,0,1);c.write(0xe001,0,2);
+            c.address(0,0);
+            let mut p=Ppu::new();
+            p.scan=100;p.dot=252;p.ticks=100;p.mask=10;p.render_history=15;
+            p.v=if palette {0x7f00} else {0x1000};
+            p.read_reg(&mut c,7);
+            assert_eq!(c.irq,!palette);
+            for _ in 0..5 {p.tick(&mut c);}
+            assert_eq!(c.irq,!palette);
+        }
+    }
 
     #[test]
     fn a_rendering_read_delays_the_buffer_and_scroll_and_changes_the_fetch_latch() {

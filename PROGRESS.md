@@ -1675,3 +1675,14 @@ Hypothesis externalCPUaddressdecodephi1 predrives mapper before CPU IRQpoll,
 withoutchangingPPUdataportphase. Defaultsource includeshook experimental;
 backups .out/{cpu,ppu}63-begin-read-trial.rs, native .out/run-ppu63-begin-read.
 Neededcompare36newIRQ tests beforeadoption;artifact62still.
+
+BeginCPUreadpredrive trial rejected: new36avg4912under3=0 vsbest3926under3=5.
+CPUrestored62. BestPPU .out/ppu63-palette-inc-suppressed.rs drivesREADrawV
+shadowPAL + INC4fornonPAL, ALATCHBUF+3, incXY4BOTH evenY256double, heldALATCH
+releaseBGLO/HI plusdummyNT337/339updatesheldlowtoVlow. All121controlledREAD
+imagesexact. Readirqavg3926 vsold62avg5121, CTRL0l8n0/l8n2/l1n2 alreadyexactIRQ
+RMS.52..67, othercasesremain. Now6variants delayedCARTpin afterINC counter
+(+1/2/3dots, tickstart/end) building /tmp/ppu_inc_pin_delay_trials.py.
+GPIOpropagationdelay mayexplainread-inducedIRQpollwithoutCPUhack.
+RawIRQpolltrialold30failed andbeginpredrivenew36worse, neveradoptthoseCPUmods.
+Artifact62good /sourceCPU62APU62/experimentalPPU restoredbestafterbuild.
