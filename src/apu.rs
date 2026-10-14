@@ -410,6 +410,10 @@ impl Apu {
         // A timer edge sees the old linear/length counters. A coincident
         // frame-counter edge changes the gate for the following timer edge.
         self.tri.timer();
+        if self.cycle & 1 != 0 {
+            self.pulse[0].timer();
+            self.pulse[1].timer();
+        }
         self.frame_cycle += 1;
         if self.reset_delay > 0 {
             self.reset_delay -= 1;
@@ -435,11 +439,7 @@ impl Apu {
         }
         // The fixed power-on alignment places the half-rate timer edge on
         // odd numbered CPU cycles, independently of frame-counter resets.
-        if self.cycle & 1 != 0 {
-            self.noise.timer();
-            self.pulse[0].timer();
-            self.pulse[1].timer()
-        }
+        if self.cycle & 1 != 0 { self.noise.timer(); }
         if self.dmc_timer == 0 {
             self.dmc_timer = DMC[(self.dmc_r[0] & 15) as usize] - 1;
             if !self.dmc_silent {
@@ -528,6 +528,18 @@ mod tests {
         }
     }
 
+    #[test]
+    fn pulse_timer_reloads_before_a_coincident_sweep_changes_its_period() {
+        let mut apu = Apu::new();
+        while apu.cycle < 14912 { apu.tick(); }
+        apu.pulse[1].period = 14;
+        apu.pulse[1].timer = 0;
+        apu.pulse[1].r[1] = 187;
+        apu.tick();
+        assert_eq!(apu.pulse[1].period,13);
+        assert_eq!(apu.pulse[1].timer,14);
+        assert_eq!(apu.pulse[1].seq,1);
+    }
     #[test]
     fn one_clock_late_dmc_delivery_requires_a_continuing_reader() {
         for (length,looping,expected) in [(0,false,64),(1,false,66),(0,true,66)] {
