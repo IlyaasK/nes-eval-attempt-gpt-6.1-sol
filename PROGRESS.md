@@ -585,3 +585,30 @@ withouttrace by that job. Source has no tentativeDMAbehavior changes yet.
 CNROM reference rejects CHR-RAM images (16/32KiBPRG, CHRRAMheader shifts
 0/6/7/8 allreject) andaccepts8KiBCHRROM. Loader now requiresCHRROMformapper3.
 Unit added; runfulltests/build after resolving the current investigation.
+
+## Deferred DMC data-read side effects fixed and validated
+
+Additional probes coverBIT,absX(with/withoutcross),indirectY,APU4015status,
+controllerfullbyte, andPPUSTATUSnearvblank. Missing read is specific to DMA
+interrupting the LASTaddress formation read, including zero-page indirect
+pointer-high fetch. Page-cross dummy reads consume it before the data port
+and must NOT add an extra finalread. IfDMAhalts the final4015itself, its
+floatingbit5 retains pre-DMCGET bus whilecontrollerupperbits seeDMAFF.
+Generalopen-bus4015testswithpagecrossdummyPPUbus0/32/255provebit5 otherwise
+followsregularCPUopenbus; do not globallyzeroit.
+
+Bus now recordslastDmcGET andpreGETopen; CPU.finished_address marks a read
+repeat when the address was fetched immediatelyafterthatGET. The nextreal
+CPUread performs the extraaccess (and releasespadOE betweenitandactualread);
+pagecrossdummy consumesit, writesdiscardit. NoCPUcyclesadded. Final4015
+held-byDMA usespreGETfloatingbit5 forits resumedread only. Backupbeforefix
+.out/cpu-before-deferred-dmc-read.rs. All60originalcollisionprobesmatchvideo
+now (.out/ppu-dmc/fixed-results.json), maximumaudioRMS .08823. Includes11
+PPUSTATUSvblankalignments, allmemory-addressingvariants andcontrollerbits.
+
+36unit+ABI pass; wasm rebuilt. NewCPUunit coversabsolutePPUDATA/controller
+andAPUstatus,addressindirectpointerhigh,andpagecrossnegativecase. Current
+bundleddiagnostic rerun .out/deferred-dmc-diagnostics.log completed; compare
+itsimages/audio next. Dense loopingDMC+PPUDATAstream5alignmentprobes running
+(.out/ppu-dmc-stream); theyexercise reloadcollisions, notonlyfirstload.
+Original tools/ppu_dmc_stream_probe.s/tools/nrom32_chr.cfg.

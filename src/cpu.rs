@@ -172,6 +172,9 @@ pub struct Bus {
     oam_have_data: bool,
     dmc_pending_at: Option<u64>,
     dmc_stage: Option<DmcDmaStage>,
+    last_dmc_get: Option<u64>,
+    dmc_read_after_address: bool,
+    dmc_open_before_get: u8,
     request: Option<CycleOp>,
     result: Option<u8>,
 }
@@ -203,6 +206,9 @@ impl Bus {
             oam_have_data: false,
             dmc_pending_at: None,
             dmc_stage: None,
+            last_dmc_get: None,
+            dmc_read_after_address: false,
+            dmc_open_before_get: 0,
             request: None,
             result: None,
         }
@@ -280,7 +286,9 @@ impl Bus {
                     if self.oam_index == 256 { self.oam_active = false; }
                 }
                 DmaAction::DmcGet(a) => {
+                    self.dmc_open_before_get = self.open;
                     let v = self.raw_dma_read(a);
+                    self.last_dmc_get = Some(self.cycles);
                     #[cfg(feature="trace")]
                     eprintln!("DMC_GET {} {:04x} {:04x} {}", self.cycles,
                         a, self.dma_halt_addr, v);
@@ -295,8 +303,19 @@ impl Bus {
             return false;
         }
         self.request = None;
+        let repeat_read = std::mem::take(&mut self.dmc_read_after_address);
         let value = match op {
-            CycleOp::Read(a) => self.raw_read(a),
+            CycleOp::Read(a) => {
+                if repeat_read {
+                    // A DMC transfer in the last address-fetch cycle also
+                    // repeats the following data read. A page-crossing
+                    // dummy access consumes this repeat before the final
+                    // read. It adds peripheral side effects, not clocks.
+                    self.raw_read(a);
+                    self.pad_oe = None;
+                }
+                self.raw_read(a)
+            },
             CycleOp::Write(a, v) => { self.raw_write(a, v); 0 }
         };
         self.result = Some(value);
@@ -324,7 +343,16 @@ impl Bus {
             match a {
                 0..=0x1fff => self.ram[a as usize & 2047],
                 0x2000..=0x3fff => self.ppu.read_reg(&mut self.cart, a),
-                0x4015 => self.apu.status(self.open),
+                0x4015 => {
+                    // The status register's floating bit retains the bus
+                    // from its stalled access rather than the DMC ROM
+                    // byte. Controller upper bits still see that ROM byte.
+                    let open = if self.dma_halt_addr == 0x4015 &&
+                        self.last_dmc_get == Some(self.cycles - 1) {
+                        self.dmc_open_before_get
+                    } else { self.open };
+                    self.apu.status(open)
+                },
                 0x4016 | 0x4017 => {
                     let i = (a & 1) as usize;
                     let b =
@@ -520,9 +548,14 @@ impl Cpu {
                 self.read(a as u16).await;
                 a.wrapping_add(if m == Zpx { self.x } else { self.y }) as u16
             }
-            Abs => self.word().await,
+            Abs => {
+                let a = self.word().await;
+                self.finished_address();
+                a
+            },
             Abx | Aby => {
                 let base = self.word().await;
+                self.finished_address();
                 self.base_addr = base;
                 let a =
                     base.wrapping_add(if m == Abx { self.x } else { self.y } as
@@ -537,7 +570,9 @@ impl Cpu {
                 self.read(b as u16).await;
                 let b = b.wrapping_add(self.x);
                 let l = self.read(b as u16).await as u16;
-                l | ((self.read(b.wrapping_add(1) as u16).await as u16) << 8)
+                let a = l | ((self.read(b.wrapping_add(1) as u16).await as u16) << 8);
+                self.finished_address();
+                a
             }
             Izy => {
                 let b = self.fetch().await;
@@ -545,6 +580,7 @@ impl Cpu {
                 let base =
                     l |
                         ((self.read(b.wrapping_add(1) as u16).await as u16) << 8);
+                self.finished_address();
                 self.base_addr = base;
                 let a = base.wrapping_add(self.y as u16);
                 if store || (base ^ a) & 0xff00 != 0 {
@@ -554,6 +590,10 @@ impl Cpu {
             }
             _ => 0,
         }
+    }
+    fn finished_address(&self) {
+        let mut b = self.bus.borrow_mut();
+        b.dmc_read_after_address = b.last_dmc_get == Some(b.cycles - 1);
     }
     async fn step(&mut self) {
         use Op::*;
@@ -1072,6 +1112,47 @@ mod dmc_dma_tests {
         assert_eq!(b.raw_read(0x4016) & 1, 0);
         b.raw_read(0x8000);
         assert_eq!(b.raw_read(0x4016) & 1, 1);
+    }
+
+    #[test]
+    fn dmc_address_fetch_conflicts_repeat_ports_and_respect_page_crossing() {
+        fn run(setup: &[u8], access: &[u8], frame_irq: bool) -> u8 {
+            let mut rom = vec![0; 16 + 32768];
+            rom[..4].copy_from_slice(b"NES\x1a");
+            rom[4] = 2;
+            let mut code = vec![0x78, 0xa9,0x4f,0x8d,0x10,0x40,
+                0xa9,0x20,0x8d,0x12,0x40, 0xa9,1,0x8d,0x13,0x40,
+                0xa9,1,0x8d,0x16,0x40, 0xa9,0,0x8d,0x16,0x40];
+            code.extend_from_slice(setup);
+            code.extend_from_slice(&[0xa9,16,0x8d,0x15,0x40]);
+            code.extend_from_slice(access);
+            code.extend_from_slice(&[0x8d,0,0x60,0x02]);
+            rom[16..16 + code.len()].copy_from_slice(&code);
+            rom[16 + 0x4800..16 + 0x4811].fill(255);
+            rom[16 + 32764..16 + 32766].copy_from_slice(&0x8000u16.to_le_bytes());
+            let mut nes = Nes::new(Cart::load(&rom).unwrap());
+            nes.set_keys(2); // A=0, B=1 makes the deleted bit observable.
+            {
+                let mut b = nes.bus.borrow_mut();
+                b.apu.frame_irq = frame_irq;
+                for (a, v) in [(0,17), (1,34), (2,51)] { b.cart.chr_write(a, v); }
+            }
+            while nes.bus.borrow().cycles < 200 { nes.clock(); }
+            let value = nes.bus.borrow().cart.ram[0];
+            value
+        }
+        // An odd enable interrupts the last absolute operand fetch.
+        assert_eq!(run(&[0x24,0], &[0xad,0x16,0x40,0x29,1], false), 1);
+        assert_eq!(run(&[0x24,0], &[0xad,7,0x20], false), 17);
+        assert_eq!(run(&[0x24,0], &[0xad,0x15,0x40], true), 16);
+        // If DMA halts the port itself, its existing repeated reads suffice;
+        // $4015's undriven bit must not pick up the DMC ROM's $FF.
+        assert_eq!(run(&[], &[0xad,0x15,0x40], true), 16);
+        // Indirect address reads also carry the conflict to the data read.
+        assert_eq!(run(&[0xa9,0x16,0x85,0x10,0xa9,0x40,0x85,0x11,0xa0,0],
+            &[0xb1,0x10,0x29,1], false), 1);
+        // The page-crossing dummy read consumes it before accessing the pad.
+        assert_eq!(run(&[0xa2,23], &[0xbd,0xff,0x3f,0x29,1], false), 0);
     }
 
     #[test]

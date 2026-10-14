@@ -33,6 +33,9 @@ CAPTURE_FLAGS = 0
 .ifndef PPU_OPEN
 PPU_OPEN = -1
 .endif
+.ifndef RELOAD_DELAY
+RELOAD_DELAY = 0
+.endif
 .segment "HEADER"
 .byte "NES",$1a,2,0,0,0
 .res 8,0
@@ -95,6 +98,12 @@ inner:
  bit $00
 .endif
  sta $4015
+.if RELOAD_DELAY
+ ldx #RELOAD_DELAY
+reload_wait:
+ dex
+ bne reload_wait
+.endif
  .repeat EXTRA_NOPS
  nop
  .endrepeat
