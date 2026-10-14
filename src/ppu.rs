@@ -372,16 +372,19 @@ impl Ppu {
         self.athi =
             (self.athi & 0xff00) | if self.attr & 2 != 0 { 255 } else { 0 }
     }
+    fn initialize_evaluation(&mut self) {
+        self.eval_initialized=true;
+        self.eval_pos=0;
+        self.eval_n=self.oam_addr>>2;
+        self.eval_m=self.oam_addr&3;
+        self.eval_done=false;
+        self.overflow_left=0;
+        self.indices=[255;8];
+    }
     fn evaluate(&mut self) {
-        let d = self.dot;
-        if d==1 || (d<=64 && !self.eval_initialized) {
-            self.eval_initialized=true;
-            self.eval_pos = 0;
-            self.eval_n = self.oam_addr >> 2;
-            self.eval_m = 0;
-            self.eval_done = false;
-            self.overflow_left = 0;
-            self.indices = [255; 8];
+        let d=self.dot;
+        if self.scan<240 && d>=65 && !self.eval_initialized {
+            self.initialize_evaluation();
         }
         if d <= 64 {
             if d & 1 == 0 { self.secondary[(d / 2 - 1) as usize] = 255 }
@@ -424,14 +427,15 @@ impl Ppu {
         let y = if self.scan == 261 { 255 } else { self.scan as u8 };
         let in_range = y >= self.eval_latch && y - self.eval_latch < height;
         if self.eval_pos < 32 {
-            if self.eval_m == 0 {
+            if self.eval_pos&3 == 0 {
                 // Y is written before the range test. A rejected sprite
                 // leaves its Y in the next otherwise empty secondary slot.
                 self.secondary[self.eval_pos]=self.eval_latch;
                 if in_range {
                     self.indices[self.eval_pos / 4] = self.eval_n;
                     self.eval_pos += 1;
-                    self.eval_m = 1
+                    self.eval_m=(self.eval_m+1)&3;
+                    if self.eval_m==0 {self.eval_n=self.eval_n.wrapping_add(1);}
                 } else { self.eval_n = self.eval_n.wrapping_add(1) }
             } else {
                 self.secondary[self.eval_pos] = self.eval_latch;
@@ -579,7 +583,10 @@ impl Ppu {
         }
         if let Some(a) = self.cart_addr_pending.take() { c.address(a, self.ticks); }
         let d = self.dot;
-        if d==1 {self.post_eval_valid=false;self.eval_initialized=false;}
+        if d==1 {
+            self.post_eval_valid=false;self.eval_initialized=false;
+            if self.render_history&1!=0 {self.initialize_evaluation();}
+        }
         let just_enabled = std::mem::take(&mut self.render_just_enabled);
         if self.scan == 261 && d == 338 {
             self.skip_render = self.rendering()

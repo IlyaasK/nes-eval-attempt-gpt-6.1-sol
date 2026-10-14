@@ -1,0 +1,13 @@
+"""Original OAM address/enable probe with full-byte read capture support."""
+import argparse,pathlib,subprocess
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('prefix');p.add_argument('--address',type=int,default=1);p.add_argument('--write-cycle',type=int,default=77768);p.add_argument('--enable-cycle',type=int,default=40008);a=p.parse_args();q=pathlib.Path(a.prefix);q.parent.mkdir(parents=True,exist_ok=True)
+rows=[(33000,0x2000,0),(33008,0x2001,0),(33016,0x2003,0)];oam=[255]*256;oam[:8]=[200,160,170,16,161,200,200,160]
+for i,v in enumerate(oam):rows.append((33024+8*i,0x2004,v))
+rows.extend([(40000,0x2000,0),(40008,0x2001,8)])
+if a.enable_cycle!=40008:rows.extend([(77730,0x2001,0),(a.enable_cycle,0x2001,8)])
+rows.append((a.write_cycle,0x2003,a.address));first=max(77770,a.write_cycle+4,a.enable_cycle+4)
+# A one-cycle gap cannot be represented by the timing replay's delay code.
+last=max(a.write_cycle,a.enable_cycle)
+if first-last==5:first+=1
+for i in range(4):rows.append((first+20*i,0x2004,None))
+rows.sort();q.with_suffix('.txt').write_text(''.join(f'READ {t} {r:04x}\n' if v is None else f'WRITE {t} {r:04x} {v}\n' for t,r,v in rows));subprocess.run(['python3','tools/replay_noise.py',str(q.with_suffix('.txt')),str(q.with_suffix('.nes')),'--registers','2000,2001,2003,2004'],check=True);r=bytearray(q.with_suffix('.nes').read_bytes());r[5]=1;r.extend(bytes(8192));q.with_suffix('.nes').write_bytes(r)
