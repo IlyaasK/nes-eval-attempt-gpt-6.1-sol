@@ -261,7 +261,9 @@ impl Ppu {
                         255
                     } else if self.rendering_line() && self.dot <= 321
                         && !((self.scan == 261 || self.scan == 0) && self.dot == 0) {
-                        if self.post_eval_valid && self.scan<240 && (66..=257).contains(&self.dot) {
+                        if self.scan<240 && self.eval_pos>=32 && !self.eval_done && (66..=257).contains(&self.dot) {
+                            self.secondary_cpu[0]
+                        } else if self.post_eval_valid && self.scan<240 && (66..=257).contains(&self.dot) {
                             self.post_eval_latch
                         } else {self.eval_latch}
                     } else {
@@ -272,6 +274,8 @@ impl Ppu {
             }
             7 => {
                 let a = self.v & 0x3fff;
+                #[cfg(feature="trace")]
+                if a>=0x3f00 {eprintln!("PAL_READ {} {} {:04x} shadow={} buf={} fetch={:04x}",self.scan,self.dot,a,self.nt[c.nt_index(a-0x1000)],self.buf,self.fetch_addr);}
                 if self.rendering_line() {
                     // Cartridge pins see the CPU port address immediately.
                     // Palette RAM is internal; its external read uses the
