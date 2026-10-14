@@ -11,7 +11,8 @@ p.add_argument('--address',type=int,default=128)
 p.add_argument('--attribute',type=int,default=0)
 p.add_argument('--y',type=int,default=60)
 p.add_argument('--tile',type=int,default=1)
-p.add_argument('--control',type=int,default=0);a=p.parse_args()
+p.add_argument('--control',type=int,default=0)
+p.add_argument('--render-cycle',type=int,default=50000);a=p.parse_args()
 out=pathlib.Path(a.rom);out.parent.mkdir(parents=True,exist_ok=True)
 rows=[(20,0x2003,0)]
 rows.extend((26+4*i,0x2004,255) for i in range(256))
@@ -25,8 +26,9 @@ clock=33000
 for addr,v in [(0x3f00,15),(0x3f13,17),(0x3f17,33),(0x3f1b,49)]:
  for reg,val in [(0x2006,addr>>8),(0x2006,addr&255),(0x2007,v)]:
   rows.append((clock,reg,val));clock+=6
-rows.extend([(33990,0x2000,a.control),(34000,0x2006,0),(34004,0x2006,0),(50000,0x2001,20),
+rows.extend([(33990,0x2000,a.control),(34000,0x2006,0),(34004,0x2006,0),(a.render_cycle,0x2001,20),
  (a.write_cycle,0x2003,a.address)])
+rows.sort()
 trace=out.with_suffix('.txt');trace.write_text(''.join(f'WRITE {t} {addr:04x} {v}\n' for t,addr,v in rows))
 subprocess.run([sys.executable,'tools/replay_noise.py',str(trace),str(out),
- '--registers','2001,2003,2004,2006,2007'],check=True)
+ '--registers','2000,2001,2003,2004,2006,2007'],check=True)

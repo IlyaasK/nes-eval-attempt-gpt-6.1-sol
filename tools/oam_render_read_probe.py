@@ -10,10 +10,12 @@ p.add_argument('--read-cycle',type=int,default=66582)
 p.add_argument('--attribute',type=int,default=0)
 p.add_argument('--y',type=int,default=60)
 p.add_argument('--tile',type=int,default=1)
-p.add_argument('--control',type=int,default=0);a=p.parse_args()
+p.add_argument('--control',type=int,default=0)
+p.add_argument('--address',type=int,default=0)
+p.add_argument('--render-cycle',type=int,default=50000);a=p.parse_args()
 out=pathlib.Path(a.rom)
 subprocess.run([sys.executable,'tools/oam_eval_write_probe.py',str(out),
- '--write-cycle',str(a.read_cycle-4),'--address','0','--attribute',str(a.attribute),
+ '--write-cycle',str(a.read_cycle-4),'--address',str(a.address),'--render-cycle',str(a.render_cycle),'--attribute',str(a.attribute),
  '--y',str(a.y),'--tile',str(a.tile),'--control',str(a.control)],check=True)
 rom=bytearray(out.read_bytes());end=int.from_bytes(rom[-6:-4],'little');pos=end-0x8000
 code=bytes([0xad,4,0x20,0x85,0,0xa9,0,0x8d,1,0x20,

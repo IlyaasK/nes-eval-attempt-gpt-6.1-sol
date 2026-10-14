@@ -24,9 +24,37 @@ wait1:
 wait2:
  bit $2002
  bpl wait2
+ .ifdef BOTTOM_SPRITES
+ ; Fill all OAM with out-of-range sprites, then populate the last visible
+ ; line with eight even-bank 8x16 sprites. Pre-render must clear them.
+ lda #0
+ sta $2003
+ lda #255
+ ldx #0
+fill_oam:
+ sta $2004
+ inx
+ bne fill_oam
+ lda #0
+ sta $2003
+ ldx #8
+bottom_oam:
+ lda #232
+ sta $2004
+ lda #0
+ sta $2004
+ sta $2004
+ sta $2004
+ dex
+ bne bottom_oam
+ .endif
  lda #CTRL
  sta $2000
+ .ifdef BOTTOM_SPRITES
+ lda #$18
+ .else
  lda #$08
+ .endif
  sta $2001
  lda #LATCH
  sta $c000
