@@ -295,7 +295,7 @@ impl Ppu {
                     // Palette RAM supplies the CPU immediately and fills
                     // the buffer from its nametable shadow. Buffered reads
                     // instead sample the rendering bus three dots later.
-                    c.address(if a>=0x3f00 {a-0x1000} else {a},self.ticks);
+                    c.address_cpu(if a>=0x3f00 {a-0x1000} else {a},self.ticks);
                     self.data_reads.push_back((self.ticks+3,if a>=0x3f00 {a-0x1000} else {0xffff}));
                     // Palette bypass also strobes scroll immediately;
                     // buffered reads delay that strobe by four PPU dots.

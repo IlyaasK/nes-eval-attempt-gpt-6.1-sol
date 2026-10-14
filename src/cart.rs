@@ -278,7 +278,12 @@ impl Cart {
             };
         t * 1024 + (a & 1023)
     }
-    pub fn address(&mut self, a: u16, dot: u64) {
+    pub fn address(&mut self, a: u16, dot: u64) {self.address_phase(a,dot,false)}
+    // CPU-port reads drive A12 after the M2 sampling phase. A low
+    // interval spanning three CPU falling edges can be shorter than
+    // the PPU-fetch path's nine-dot guard.
+    pub fn address_cpu(&mut self, a: u16, dot: u64) {self.address_phase(a,dot,true)}
+    fn address_phase(&mut self, a: u16, dot: u64, cpu: bool) {
         if self.mapper == 1 {
             // SxROM boards reuse the currently selected CHR address lines
             // for PRG ROM/RAM. In 4 KiB mode the PPU chooses the register.
@@ -292,7 +297,7 @@ impl Cart {
         // Rapid $2000 table switching can produce an eight-dot low
         // interval; the reference rejects it. Nine dots qualifies, which
         // also preserves the odd pre-render line's first background edge.
-        } else if !self.a12 && dot.saturating_sub(self.low_since) >= 9 {
+        } else if !self.a12 && (if cpu {(dot/3).saturating_sub(self.low_since/3)>=3} else {dot.saturating_sub(self.low_since)>=9}) {
             if self.irq_counter == 0 || self.irq_reload {
                 self.irq_counter = self.irq_latch
             } else { self.irq_counter -= 1 }
@@ -471,6 +476,18 @@ mod tests {
         assert_eq!(c.read(0x8000, 0), 4);
         assert_eq!(c.read(0x6000, 0), 37);
     }
+    #[test]
+    fn mmc3_cpu_port_edges_count_three_m2_falling_edges() {
+        for cpu in [false,true] {
+            let mut c=Cart::load(&image(4,2,1)).unwrap();
+            c.address(0x1000,97);
+            c.address(0,101);
+            c.write(0xc000,0,0);c.write(0xc001,0,1);c.write(0xe001,0,2);
+            if cpu {c.address_cpu(0x1000,109);} else {c.address(0x1000,109);}
+            assert_eq!(c.irq,cpu);
+        }
+    }
+
     #[test]
     fn mmc3_a12_rejects_eight_low_dots_but_accepts_nine() {
         let mut c = Cart::load(&image(4,2,1)).unwrap();
