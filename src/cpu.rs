@@ -172,6 +172,7 @@ pub struct Bus {
     oam_have_data: bool,
     dmc_aborted_get: bool,
     dmc_aborted_addr: Option<u16>,
+    dmc_start_at: Option<u64>,
     dmc_pending_at: Option<u64>,
     dmc_stage: Option<DmcDmaStage>,
     last_dmc_get: Option<u64>,
@@ -209,6 +210,7 @@ impl Bus {
             oam_have_data: false,
             dmc_aborted_get: false,
             dmc_aborted_addr: None,
+            dmc_start_at: None,
             dmc_pending_at: None,
             dmc_stage: None,
             last_dmc_get: None,
@@ -270,6 +272,7 @@ impl Bus {
                 && self.dmc_pending_at.is_some_and(|t| t <= next_cycle) {
                 self.dmc_pending_at = None;
                 self.dmc_aborted_get = false;
+                self.dmc_start_at = None;
                 self.dmc_active = true;
                 self.dmc_stage = Some(DmcDmaStage::Dummy);
                 dmc_started = true;
@@ -403,7 +406,7 @@ impl Bus {
             // sample buffer to the output shifter, including this clock.
             // The first clock after a get cannot start a second request;
             // an empty packet retries on its next output boundary.
-            self.dmc_pending_at = Some(self.cycles + if self.cycles & 1 == 0 { 1 } else { 0 });
+            self.dmc_pending_at = Some((self.cycles + if self.cycles & 1 == 0 { 1 } else { 0 }).max(self.dmc_start_at.unwrap_or(0)));
         }
         self.ppu.tick(&mut self.cart);
         if self.ppu.nmi_line && !self.nmi_sample { self.nmi = true }
@@ -501,6 +504,12 @@ impl Bus {
             }
             0x4000..=0x4017 => {
                 let needed = self.apu.dmc_need();
+                if a==0x4015 {
+                    if v&16==0 {self.dmc_start_at=None;}
+                    else if self.apu.dmc_left==0 {
+                        self.dmc_start_at=Some(self.cycles + if self.cycles&1==0 {4} else {3});
+                    }
+                }
                 self.apu.write(a, v);
                 if a == 0x4015 {
                     if !self.apu.dmc_need() {
