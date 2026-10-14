@@ -170,6 +170,7 @@ pub struct Bus {
     oam_index: u16,
     oam_latch: u8,
     oam_have_data: bool,
+    dmc_aborted_get: bool,
     dmc_pending_at: Option<u64>,
     dmc_stage: Option<DmcDmaStage>,
     last_dmc_get: Option<u64>,
@@ -205,6 +206,7 @@ impl Bus {
             oam_index: 0,
             oam_latch: 0,
             oam_have_data: false,
+            dmc_aborted_get: false,
             dmc_pending_at: None,
             dmc_stage: None,
             last_dmc_get: None,
@@ -244,11 +246,23 @@ impl Bus {
                 self.oam_page = page;
                 self.oam_index = 0;
                 self.oam_have_data = false;
+                // An aborted reload can retain its get after the CPU
+                // resumes. OAM arbitration exposes that read, stealing
+                // its first get slot and filling the sample buffer.
+                if self.dmc_aborted_get {
+                    self.dmc_aborted_get = false;
+                    self.dmc_pending_at = None;
+                    self.dmc_active = true;
+                    self.dmc_stage = Some(DmcDmaStage::Get);
+                    self.dmc_forced = true;
+                    dmc_started = true;
+                }
                 oam_started = true;
             }
             if !self.dmc_active && self.last_dmc_get != Some(next_cycle - 1)
                 && self.dmc_pending_at.is_some_and(|t| t <= next_cycle) {
                 self.dmc_pending_at = None;
+                self.dmc_aborted_get = false;
                 self.dmc_active = true;
                 self.dmc_stage = Some(DmcDmaStage::Dummy);
                 dmc_started = true;
@@ -267,6 +281,7 @@ impl Bus {
             // A coincident CPU write cancels it; an OAM DMA can absorb it.
             if let CycleOp::Read(a) = op { self.dma_halt_addr = a; }
             self.last_dma_cycle = true;
+            self.dmc_aborted_get = true;
             let open = self.open;
             self.raw_read(self.dma_halt_addr);
             self.open = open;
@@ -1143,6 +1158,26 @@ mod dmc_dma_tests {
         rom[16 + 0x4800..16 + 0x4811].fill(255);
         rom[16 + 32764..16 + 32766].copy_from_slice(&0x8000u16.to_le_bytes());
         (Nes::new(Cart::load(&rom).unwrap()), end)
+    }
+
+    #[test]
+    fn an_aborted_reload_retains_a_sample_read_for_the_next_oam_dma() {
+        let (mut nes,_) = fixture(None);
+        while nes.bus.borrow().cycles < 807 { nes.clock(); }
+        nes.bus.borrow_mut().raw_write(0x4015,0);
+        nes.clock(); nes.clock();
+        assert_eq!(nes.bus.borrow().cycles,809);
+        assert!(nes.bus.borrow().dmc_aborted_get);
+        nes.clock();
+        nes.bus.borrow_mut().raw_write(0x4014,2);
+        let start = nes.bus.borrow().cycles;
+        nes.clock(); nes.clock();
+        assert_eq!(nes.bus.borrow().last_dmc_get,Some(812));
+        assert_eq!(nes.bus.borrow().apu.dmc_addr,0xc802);
+        assert_eq!(nes.bus.borrow().apu.dmc_left,0);
+        while nes.bus.borrow().oam_active { nes.clock(); }
+        assert_eq!(nes.bus.borrow().cycles-start,515);
+        assert!(!nes.bus.borrow().dmc_aborted_get);
     }
 
     #[test]

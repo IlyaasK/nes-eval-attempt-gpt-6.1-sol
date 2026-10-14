@@ -1289,3 +1289,49 @@ notjustloop,outputactive,remainingsamplelength, orother4015channel enables.
 Nativeabortedpulse165537 isREAD8BF1 (min4241 isREAD8037). Tracefeature now
 logsDMC_ABORT CPUaddress/type. Debugcopy .out/run-trace-abort52. Defaultnative
 currentlytrace (restore beforelaunchingtoolsusingdefaultbinary).
+
+## Accepted PPU54 and revised audio isolation
+
+The activationunit failure was anoff-by-one TEST loop (dot224/x223 never
+executed), notemulatorfailure; correctedwhile<=224. ALL54units pass. Current
+PPU multiplexedfetches/renderVdelay3/blankVimmediate/hi1inputfirstenable0/
+2dotverticalscroll areACCEPTED after20kallgameimagesexact,30diagnosticsall
+images/countsexact,215sideeffectallimagesexact. Wasmrequired54build complete;
+defaultnative54nontrace rebuilt (job97842 finished check). ExtraPPUstress
+failuresremain; latest .out/ppu-random/scrolldisable-results.json includes16
+streams264frames; initial211badframes improves~145badframes, stillnotdone.
+UnitprotectsfirsttileonenablewithCHR0/FF, delayedV/attrfetchhybridaddress,
+andlateenable255whichmissesincY256butcopiesX257. WasmABIcheckpending.
+
+IMPORTANT corrected409audioisolation: earliest STOP suspicion waswrong.
+Newmarker186883400Bval155 ->2001 BEFOREfirstOAM isvisibleandEXACT. SoCPU+2
+debt occursbetween186883and189178, whichincludesOAMDMAs187457(pageC0) and
+187995(page2), NOTstop165534 itself. FirstOAMwindow187457..187971 includes
+silentDMCbyteclock187889 (=165537+11*2032,period5); secondnoDMCbytebefore188509.
+NativeDMCreaderdisabledleft0/bufferNone, noDMCGET since163508. Refmaysteal2
+OAMcyclesatemptyDMCbyteevenreaderdisabled, orsourcepage/timer edge effect.
+OAMremoval4factorclones running .out/s409-oamfactors.log. Earlierlength/loop/
+stopvaluefactor changesALLsame initialerror; asSTOPirrelevant, normal result.
+ModifiedDMCsampleE900..E904 FF showsnative/ref audioperfectbeforeOAM, soDMC
+outputtimerphaseitselfwasNOTshiftedbeforestop. NativeMIX/CPUtiming preserved.
+
+## Aborted-DMC residual OAM fetch trial (source NOT yet accepted)
+
+48originalcontrols .out/dmc-oam-inactive/results.json: modes neverenabled
+andstopfarfrompacket ALLexact; abortedstop3beforefirstpacket gives6px (+2CPU)
+onNEXT OAM EVERYtime, acrossrate5/15 loop/no-loop4OAMtimings evennotoverlapping
+anyDMCbyte. So latentstateleftbyabortedHALT, notsilencepacketOAM overlap.
+409 removefirst/secondOAM alone bothsameerror; removingBOTHmakesaudiopeak1
+(remainingOAMcarrieslatent2cycles). NoCPUdebt beforefirstOAM after165534stop.
+
+TrialCPU booldmc_aborted_dummy setonactualabortedonehalt, clearednextnormal
+DMCstart orOAMstart. OAMheld2extraclksbeforeGET fixesall48imagesandlargeCPU
+debt but96randomstreams residuals400RMS31.7/40836.2/40917.4 (othersstillpass).
+Firstremainingerrors SAME GPIOclocks butonlyshortintervals now, suggesting
+reference doesanACTUAL DMCGET (extraoutputbyte), nottwoemptyholdclocks.
+Newtrial onnextOAM schedulesDMCactive Getstage, skipHALTclock, firsteligible
+GET stealsOAMGET ->2cycleextension andfillsDMCbufevenleft0 (existingdmc_supply
+supportsretainedreads). NormalDMCstartclearsflag. Currentlybuilddone and96
+random+48videos rerunning .out/aborted-oam-get-trial.log. DoNOTbuildwasmtrial.
+AcceptedCPUbackup .out/cpu-before-aborted-oam-dummy.rs (PPU54acceptedseparately).
+Holdtrialbackup .out/cpu-aborted-oam-hold-trial.rs; fixedbinarieshold/getnamed.
