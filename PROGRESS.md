@@ -1457,3 +1457,56 @@ latchingmayneedseparatemapperpinphaseunderSPctrlchanges, examineaudio.
 Accepted-source backups .out/cpu55-accepted.rs/.out/ppu54-accepted.rs areOLD;
 current57 isaccepted. Failedparallel/no-stall model NEVERadopted (retained
 under .out/cpu-abort-parallel-get-trial.rs forhistoryonly).
+
+## New58+ trials, artifact stillaccepted57
+
+128new2048-event allAPU/DMC/OAM streams500..627, extended6trailingframes:
+127peak<=2; seed568RMS6.98peak690 ONLY1934741..1937460. DMC-onlyisolatealso
+RMS5.89peak538; nativeDMCmix trace matches forwardmodel within1PCM locally.
+ErroraroundfirstOAMpage40at1934552, DMCreadbuffer timeline nativeGET1933824
+CA01 byte1(original)/24(DMCisolate), GET1934848CA02byte64. NOotherchannels
+needed. Bytefit packet1934845 doesn'tfix; earlypulse nearOAMGET4011 clock
+1934588 isoffnormalDMCbitclock1934589. TestingfirstOAMsource0/2/20/40 now
+/tmp/s568_oam_source.py jobpending .out/apu-dma-heldout58/s568-page-results.json.
+.DO_NOTassumebit/CPUmemorycorruptionwithoutmatchingwaveform.
+
+NewREAD support tools/replay_noise.py: READ t addr ->LDAaddr at t, DACfull-
+low7 at t+4, LSRA +DACupper7 at t+10. OldWRITE-onlyPRGbyteidenticalverified.
+16originalmixedPPU/controller-read streams .out/ppu-read-random allcounts
+exact butaudiohugeRMS~600..1000, manyreadvalueerrors. tools/ppu_read_capture.py
+preservesprefixinstructiontiming, capturesfirstDACwriteintoWORKRAM2/3,
+thenCNROMswitchbank1 glyphs encodeallreadbytes. InitialPRGRAM6000capturewas
+invalid becauseCNROM hasNORAM (reference), andNTattrsneededclear fordecode.
+Fixedboth. CapturedRAM2 fullbytevalues confirmed4directNROM-single-read
+probes .out/ppu-single-read-byte: seed0idx12native9/ref33, seed1idx2
+220/ref218, seed2idx0OAM96/ref189, seed0idx6OAM255/ref121.
+
+CartRAM presence30variants PROVES UxROM/CNROM NEVERdecode6000RAM eveniNES1/
+NES2RAMdeclared orBattery;NROM NES2NONE stillRAM8k. CurrentCart58TRIAL maps
+mapper2/3ramlen0, mapper0/1/4atleast8192. UnitupdatedNROMNES2default andnew
+M2/M3headers/Battery tests;58units pass. .out/run-ram-map58-trial beforePPU
+trial implementsRAMfix. NeedtestNROMsmallNES2RAMmirroring beforeadoptmax8k
+(ifnone defaults8butexplicit2Kmaybehonored). WASMstill57.
+
+PPUOAM readbuspost-evaluation: refcontinuesprimaryYwalkafter64wrap; odddata
+seed2line93dot234 givesOAMY11=189; oldheldlastY63=96. AfterdoneEVENphase
+refreturnssecondaryFF (e.gline98currentdot251refFF;noPrimaryFFbytes). Also
+renderreenabledbefore65needsinitialization evenifdot1maskedoff (seed0line110
+Y34=121 vsoldlast255). Globalreinit65forALLlines BREAKS oldvideo ->replaced
+with eval_initialized flag resetlineDot1; oldactiveDot1initpreserved, late
+primaryevaluation initializesonlyifmissedDot1. PostDonewalk DOESNOTupdate
+CPUOAMADDR (updatingaddrbreaksRGB), eval_m NOTresetuponwrap(oldpreserved).
+CurrentPPU59TRIAL isthisstate; latest .out/run-oam-initialize-on-resume-trial,
+.oamresume-results.json roughlyold57RGB butsomeextraerrors remain. NOTadopted.
+AcceptedPPUbackup .out/ppu57-accepted.rs;Cartbackup .out/cart57-accepted.rs.
+
+PPUDATA duringrender likelydelayedbufferfill/increment3PPUdots fromFETCH
+address: seed0READ73160dot218V15E9, refnextbuf33 equalsBGtile47CHR12F1 LOW
+addressat221; seed1READ70206dot222V517D refnextbuf218 equalsNEXTNT217Eaddress
+at225 (beforeCPUincXY,normalincX224), seed2READ71714dot313V0E96 refbuf0
+matcheslastgarbageNT2E96 at315 (SPIlowaddresspin316 doesn'tyetupdatefetchbus).
+Needimplement/explore pendingrenderread+3 afterfetch, last_fetch_addr oddBG
+address5/7 andNT/attr1/3, SPread_fetch on261/263; delayedincXYafterbufpeek.
+No productionchanges forPPUDATAyet. PendingincrementmustavoidnormalX/Y
+incrementcollisions; IRQpinspossiblymustnot bechangedbybufpeek. Othermodel
+'preincrementmemoryV' matchesseed1bycoincidencebutseed0/2 falsify it.
