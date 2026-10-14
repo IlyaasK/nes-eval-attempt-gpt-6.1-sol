@@ -34,6 +34,8 @@ fn main() {
     for frame in 0..frames {
         for &(f, k) in &changes { if f == frame { n.set_keys(k) } }
         n.run_frame();
+        #[cfg(feature="trace")]
+        eprintln!("AUDIO_FRAME {} {}", frame, n.bus.borrow().cycles);
         let mut bytes = Vec::with_capacity(122880);
         for &p in &n.bus.borrow().ppu.fb {
             bytes.extend_from_slice(&p.to_le_bytes())

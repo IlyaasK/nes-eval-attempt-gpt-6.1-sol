@@ -16,6 +16,7 @@ from scipy.signal import lfilter
 from scipy.interpolate import BSpline
 from scipy.sparse import vstack,diags,csr_matrix
 from scipy.sparse.linalg import lsqr,LinearOperator
+from audio_phase import adjustment
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('wav');p.add_argument('trace');p.add_argument('power_wav');p.add_argument('output')
 p.add_argument('--iterations',type=int,default=300)
@@ -32,8 +33,8 @@ for line in pathlib.Path(args.trace).read_text().splitlines():
  words=line.split()
  if len(words)==4 and words[0]=='WRITE' and int(words[2],16)==0x4011:
   cycle,value=int(words[1]),int(words[3])&127;delta=mix(value)-mix(previous);previous=value;t=(cycle-8)*r
-  if delta and 32<t<n-50:rows.append((t,delta))
-ts=np.array([a for a,b in rows]);amps=np.array([b for a,b in rows]);scale=np.max(np.abs(amps));quant=np.floor((ts+8*r)*256)/256-(ts+8*r)+1/512
+  if delta and 32<t<n-50:rows.append((t,delta,cycle))
+ts=np.array([a for a,b,c in rows]);amps=np.array([b for a,b,c in rows]);scale=np.max(np.abs(amps));quant=adjustment([c for a,b,c in rows])
 u=lfilter([1,-r2],[r2,-r2],decoded);u=lfilter([1,-r1],[r1,-r1],u);u=np.diff(u,prepend=0)
 ids=np.floor(ts).astype(int)[:,None]+np.arange(-28,36)[None,:]
 values=u[ids]/amps[:,None];values-=values[:,np.r_[0:7,59:64]].mean(axis=1)[:,None]

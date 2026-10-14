@@ -476,8 +476,8 @@ The MMC1 pin probe's wasm framebuffer/audio hashes equal the native runner,
 
 31 unit tests plus the ABI test pass; required wasm was rebuilt. New tests
 protect board expansion conditions, SNROM disable, and delayed ordinary /
-immediate end-of-line fetch pins. Latest RHDE5000 check before the PPU pin
-delay matched every image; rerun after the delay for final regression.
+immediate end-of-line fetch pins. RHDE5000 after the PPU pin
+delay matches every image and retains its previous audio residual.
 
 ## CNROM bus conflicts fixed
 
@@ -501,3 +501,51 @@ Stallar5000 audio has only seven samples with absolute residual>=5:852597
 (+5),852598(-10),852599(+5),1499398(+7),1763998(-7),1848826(+6),1848827(+8).
 Times19.3333/34.0000/40.0000/41.9235 seconds. Investigate isolated event/
 quantization rounding rather than assuming persistent APU state divergence.
+
+## Audio phase boundary rule identified with original DAC probes
+
+Stallar's rare residuals are phase quantization, not APU sequencing. An
+isolated DAC-only ROM at the same CPU cycles reproduces the errors. A new
+tools/dac_phase_probe.py uses modular inversion of14700/596591 to place
+256 isolated impulses immediately below all256 phase boundaries. Reference
+selects the preceding sample's phase255 at exact phase0; boundaries143/173
+round up, all253 other cases retain the lower phase. This matches rounding
+the scaled fractional phase to f32 before the8bit table lookup. Native
+formerly floored f64 everywhere. Original artifacts .out/dac-phases/near.*,
+.out/dac-boundaries.*; analysis .out/dac-phases/phase-analysis.txt.
+
+Resampler now computes source phase directly from its integer accumulator,
+rounds the scaled phase through f32, and preserves the reference's lower
+side at whole samples. Unit covers zero, two rounded-up boundaries, and
+two boundaries that must stay below. All33unit tests pass. Four5000-game
+audio regression is running (.out/phase-boundary-*); required wasm must be
+rebuilt after confirming it. Backup .out/audio-before-phase-boundaries.rs.
+
+Further MMC1 probes: SEROM submapper5 and allother tested0..7 act like
+ordinary banked MMC1 in the reference; tools/mmc1_serom_probe.s/.cfg tests
+this without assumptions. All9 final images match. SNROM streaming disable
+CHR1=16/RAM8KiB across8PPU layouts matches audio timing/samplecounts; RMS
+.0147-.991 peaks1..5 (large17->96mixsteps amplify generic FIR residual).
+Artifacts .out/mmc1-serom and .out/mmc1-snrom.
+
+The phase correction is validated: near-boundary256probe RMS .035470,peak4
+(previous .093992,peak77); six isolated boundary impulses RMS .014319,peak4
+(previous .184466,peak77). All four varied5000 game samplecounts3668206 and
+final images match; audio RFK .000738peak1, RHDE .073714peak2, FF .118294peak1
+(previouspeak4), Stallar .201956peak3 (previouspeak10). No residual>=5
+remains in any game. tools/audio_phase.py shares the integer-rational/f32
+phase adjustment with calibration and inference tools. New wasm build and
+Stallar2600 native/wasm hash check are in progress.
+
+Latest wasm was built after33unit+ABI pass. Stallar2600 native andwasm
+hashes match (frame -861571252,audio376821155,1907107samples,44100Hz).
+Timed OAMADDR8 writes before/during sprite-fetch across12CPU offsets do
+not cause row-copy corruption in the reference; native matches palette17
+in allcases. tools/oam_corruption_probe.py and .out/oam-corrupt retainproof.
+
+NES2 small-PRG original ROMs (1/2/4/8KiB exponent sizing) are rejected by
+the reference;16KiB is accepted. Our loader previously accepted smaller
+images, then could divide byzero reading the reset vector. Cart::load now
+rejects PRG<16KiB. UxROM fixed-window arithmetic rewritten n-2+slot%2 to
+avoid a debug underflow with a single16KiB bank. Newunit covers rejection
+and single-bank reset-vector mapping. New34unit/build checks running.

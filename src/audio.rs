@@ -75,11 +75,15 @@ impl Resampler {
                 }
                 self.started = true;
             } else {
-                // The reference quantizes the absolute CPU-clock phase to
-                // 1/256 sample before removing the eight reset cycles.
-                let reset_phase = 7.0 * 44100.0 / CPU_HZ as f64;
-                let source_phase = clock + reset_phase;
-                let quantized = (source_phase * 256.0).floor() / 256.0;
+                // Quantize before removing the reset cycles. The table
+                // lookup rounds its scaled fractional phase to f32 first;
+                // this matters at representable cycles just below a phase
+                // boundary. At an exact whole sample the reference's clock
+                // conversion approaches from below, selecting phase255 of
+                // the preceding sample. Original 256-phase DAC probes
+                // protect both numerical edge cases independently of APU.
+                let source_phase = self.phase as f64 / CLOCK_SCALE as f64;
+                let quantized = Self::quantized_phase(self.phase);
                 let center = 17.0 + clock - 1.334
                     + quantized - source_phase + 1.0 / 512.0;
                 let base = center.floor() as isize - 16;
@@ -113,5 +117,31 @@ impl Resampler {
         self.hp2_y = z;
         self.lp += 0.8639403657579068 * (z - self.lp);
         Some((self.lp * 32767.0).clamp(-32767.0, 32767.0) as i16)
+    }
+    fn quantized_phase(phase: u64) -> f64 {
+        if phase == 0 { return -1.0 / PHASES as f64; }
+        let scaled = (phase as f64 * PHASES as f64 / CLOCK_SCALE as f64) as f32;
+        scaled.floor().min((PHASES - 1) as f32) as f64 / PHASES as f64
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn phase_lookup_matches_whole_samples_and_nearby_fractional_boundaries() {
+        assert_eq!(Resampler::quantized_phase(0), -1.0 / 256.0);
+        // For these cycles the true fraction is just below143/256 and
+        //173/256, but the lookup rounds to the boundary in single precision.
+        for (cycle, phase) in [(36255223u64, 143.0), (43737250, 173.0)] {
+            let rem = (cycle * 44100 * 12) % CLOCK_SCALE;
+            assert!((rem as f64 / CLOCK_SCALE as f64) < phase / 256.0);
+            assert_eq!(Resampler::quantized_phase(rem), phase / 256.0);
+        }
+        // Other nearby boundaries retain the preceding phase.
+        for (cycle, phase) in [(8078618u64, 30.0), (15560645, 60.0)] {
+            let rem = (cycle * 44100 * 12) % CLOCK_SCALE;
+            assert_eq!(Resampler::quantized_phase(rem), (phase - 1.0) / 256.0);
+        }
     }
 }

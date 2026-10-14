@@ -44,7 +44,10 @@ impl Cart {
         let ps = size(b[4], if nes2 { b[9] & 15 } else { 0 }, 16384)?;
         let cs = size(b[5], if nes2 { b[9] >> 4 } else { 0 }, 8192)?;
         let offset: usize = 16 + if b[6] & 4 != 0 { 512 } else { 0 };
-        if ps == 0 || offset.checked_add(ps)?.checked_add(cs)? > b.len() {
+        // The reference rejects PRG images smaller than one 16 KiB bank,
+        // including NES2 exponent sizes. Such images cannot supply the
+        // mapper windows assumed below and must fail before CPU startup.
+        if ps < 16384 || offset.checked_add(ps)?.checked_add(cs)? > b.len() {
             return None
         }
         let ram_size =
@@ -114,7 +117,7 @@ impl Cart {
                 2 =>
                     if slot < 2 {
                         self.bank as usize * 2 + slot
-                    } else { n - 4 + slot },
+                    } else { n - 2 + slot % 2 },
                 1 => {
                     let n16 = (n / 2).min(16);
                     let outer =
@@ -483,5 +486,19 @@ mod tests {
         b[4] = 252;
         b[5] = 252;
         assert!(Cart::load(&b).is_none());
+    }
+    #[test]
+    fn nes2_small_prg_images_are_rejected_before_reset_vector_reads() {
+        for exponent in 10..14 {
+            let mut b = vec![0; 16 + (1 << exponent)];
+            b[..4].copy_from_slice(b"NES\x1a");
+            b[4] = exponent << 2;
+            b[7] = 8;
+            b[9] = 15;
+            assert!(Cart::load(&b).is_none());
+        }
+        let c = Cart::load(&image(2, 1, 0)).unwrap();
+        assert_eq!(c.read(0xfffc, 0), 1);
+        assert_eq!(c.read(0xc000, 0), 0);
     }
 }

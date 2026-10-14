@@ -7,6 +7,7 @@ verify inferred timestamps by an oracle DAC-only replay, not by fit error.
 import argparse,pathlib,re,wave,numpy as np
 from scipy.signal import lfilter
 from scipy.interpolate import BSpline
+from audio_phase import adjustment
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('trace');p.add_argument('wav');p.add_argument('output');p.add_argument('--radius',type=int,default=8);a=p.parse_args()
 with wave.open(a.wav) as w:pcm=np.frombuffer(w.readframes(w.getnframes()),'<i2').astype(float)
 r=44100/1789773;r1=np.exp(-2*np.pi*90/44100);r2=np.exp(-2*np.pi*440/44100);alpha=1-np.exp(-2*np.pi*14000/44100)
@@ -21,7 +22,7 @@ for line in original:
   if delta and 32<(t-8)*r<len(pcm)-50:rows.append((t,v,delta))
 choices=np.arange(-a.radius,a.radius+1);models=[];slices=[];selection=np.full(len(rows),a.radius,dtype=int);pred=np.zeros(len(u))
 for i,(t,v,delta) in enumerate(rows):
- ts=(t+choices-8)*r;quant=np.floor((ts+8*r)*256)/256-(ts+8*r)+1/512
+ ts=(t+choices-8)*r;quant=adjustment(t+choices)
  ids=np.floor((t-8)*r).astype(int)+np.arange(-19,21);x=ids[None,:]-ts[:,None]-quant[:,None]+1.30936
  kernels=spline(np.clip(x,-18,18));kernels[np.abs(x)>=16]=0;kernels/=kernels.sum(axis=1)[:,None];kernels*=delta
  models.append(kernels);slices.append(ids);pred[ids]+=kernels[a.radius]

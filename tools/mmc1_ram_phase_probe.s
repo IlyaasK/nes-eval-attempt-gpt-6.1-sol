@@ -9,6 +9,12 @@ PPU_CONTROL = $10
 .ifndef READ_DELAY
 READ_DELAY = 0
 .endif
+.ifndef CHR_HIGH
+CHR_HIGH = 8
+.endif
+.ifndef RAM_SHIFT
+RAM_SHIFT = 8
+.endif
 .macro serial addr,value
  .repeat 5,bit
  lda #((value >> bit) & 1)
@@ -16,7 +22,7 @@ READ_DELAY = 0
  .endrepeat
 .endmacro
 .segment "HEADER"
-.byte "NES",$1a,4,0,$10,8,0,0,8,0,0,0,0,0
+.byte "NES",$1a,4,0,$10,8,0,0,RAM_SHIFT,0,0,0,0,0
 .segment "BANK0"
 .res $4000,0
 .segment "BANK1"
@@ -38,7 +44,7 @@ inner:
  bne outer
  serial $8000,28
  serial $a000,0
- serial $c000,8
+ serial $c000,CHR_HIGH
  lda #0
  sta $2006
  sta $2006
