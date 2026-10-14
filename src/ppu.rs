@@ -25,7 +25,7 @@ pub struct Ppu {
     read_hold_active:bool,
     read_hold_high:bool,
     read_hold:u8,
-    data_reads: std::collections::VecDeque<u64>,
+    data_reads: std::collections::VecDeque<(u64,u16)>,
     data_incs: std::collections::VecDeque<(u64,bool)>,
     t: u16,
     x: u8,
@@ -261,9 +261,7 @@ impl Ppu {
                         255
                     } else if self.rendering_line() && self.dot <= 321
                         && !((self.scan == 261 || self.scan == 0) && self.dot == 0) {
-                        if self.scan<240 && self.eval_pos>=32 && !self.eval_done && (66..=257).contains(&self.dot) {
-                            self.secondary_cpu[0]
-                        } else if self.post_eval_valid && self.scan<240 && (66..=257).contains(&self.dot) {
+                        if self.post_eval_valid && self.scan<240 && (66..=257).contains(&self.dot) {
                             self.post_eval_latch
                         } else {self.eval_latch}
                     } else {
@@ -274,16 +272,17 @@ impl Ppu {
             }
             7 => {
                 let a = self.v & 0x3fff;
-                #[cfg(feature="trace")]
-                if a>=0x3f00 {eprintln!("PAL_READ {} {} {:04x} shadow={} buf={} fetch={:04x}",self.scan,self.dot,a,self.nt[c.nt_index(a-0x1000)],self.buf,self.fetch_addr);}
                 if self.rendering_line() {
                     // Cartridge pins see the CPU port address immediately.
-                    // Palette RAM is internal; its external read uses the
-                    // nametable underneath it. The buffer and scroll strobes
-                    // arrive separately, three and four dots later.
+                    // Palette RAM supplies the CPU immediately and fills
+                    // the buffer from its nametable shadow. Buffered reads
+                    // instead sample the rendering bus three dots later.
                     c.address(if a>=0x3f00 {a-0x1000} else {a},self.ticks);
-                    self.data_reads.push_back(self.ticks+3);
-                    self.data_incs.push_back((self.ticks+4,a>=0x3f00));
+                    self.data_reads.push_back((self.ticks+3,if a>=0x3f00 {a-0x1000} else {0xffff}));
+                    // Palette bypass also strobes scroll immediately;
+                    // buffered reads delay that strobe by four PPU dots.
+                    if a>=0x3f00 {self.inc_x();self.inc_y();}
+                    else {self.data_incs.push_back((self.ticks+4,false));}
                     return if a>=0x3f00 {
                         let v=(self.pal[Self::pi(a)] & if self.mask&1!=0 {48} else {63}) | (open&192);
                         self.bus_set(v,63); v
@@ -437,7 +436,7 @@ impl Ppu {
         }
         let height = if self.ctrl & 32 != 0 { 16 } else { 8 };
         let y = if self.scan == 261 { 255 } else { self.scan as u8 };
-        let in_range = y >= self.eval_value && y - self.eval_value < height;
+        let in_range = y >= self.eval_latch && y - self.eval_latch < height;
         if self.eval_pos < 32 {
             if self.eval_pos&3 == 0 {
                 // Y is written before the range test. A rejected sprite
@@ -472,6 +471,13 @@ impl Ppu {
                     self.eval_m = 0;
                     self.eval_n = self.eval_n.wrapping_add(1)
                 }
+                if self.overflow_left == 0 {
+                    self.eval_done = true;
+                    self.eval_m = 0;
+                    self.post_eval_valid = true;
+                    self.post_eval_n = self.eval_n & 63;
+                    self.post_eval_latch = self.secondary_cpu[0];
+                }
             } else if in_range {
                 self.status |= 32;
                 self.overflow_left = 3;
@@ -484,6 +490,7 @@ impl Ppu {
                 self.eval_m = (self.eval_m + 1) & 3;
                 self.eval_n = self.eval_n.wrapping_add(1)
             }
+            self.eval_latch = self.secondary_cpu[0];
         }
         if self.eval_n >= 64 {
             self.eval_n=0;self.eval_done=true;
@@ -617,6 +624,9 @@ impl Ppu {
         if self.scan == 261 && d == 1 { self.status &= 31; self.update_nmi() }
         if self.rendering() && line {
             if d == 0 { self.eval_latch = self.oam_read(self.oam_addr); }
+            // The first secondary byte remains on the OAM bus through
+            // background prefetch and the following line's dot zero.
+            if d >= 321 { self.eval_latch = self.secondary_cpu[0]; }
             // An upper-table background keeps A12 low from the final NT
             // fetch through the next line's first attribute fetch. A dot-0
             // high pulse would erase the qualified MMC3 edge on dot 6.
@@ -771,9 +781,9 @@ impl Ppu {
                 self.v = (self.v & !0x7be0) | (self.t & 0x7be0);
             }
         }
-        while self.data_reads.front().is_some_and(|&at|at<=self.ticks) {
-            self.data_reads.pop_front();
-            let a=if d==336 {0x2000|(self.v&0xfff)} else {self.fetch_addr&0x3fff};
+        while self.data_reads.front().is_some_and(|&(at,_)|at<=self.ticks) {
+            let (_,read_addr)=self.data_reads.pop_front().unwrap();
+            let a=if read_addr!=0xffff {read_addr} else if d==336 {0x2000|(self.v&0xfff)} else {self.fetch_addr&0x3fff};
             self.buf=match a {
                 0..=0x1fff => c.chr_read(a),
                 0x2000..=0x3eff => self.nt[c.nt_index(a)],
@@ -784,7 +794,7 @@ impl Ppu {
             // A read at the attribute-data/low-address overlap releases
             // that latch on the high pattern strobe instead.
             self.read_hold=self.buf;
-            self.read_hold_active=true;
+            self.read_hold_active=read_addr==0xffff;
             self.read_hold_high=((1..=255).contains(&d)||(321..=331).contains(&d)) && matches!(d&7,4|5);
 
         }
@@ -848,6 +858,50 @@ mod tests {
         assert_eq!(p.read_reg(&mut c,4),231);
         p.write_reg(&mut c,1,0,50000);
         assert_eq!(p.read_reg(&mut c,4),200);
+    }
+
+    #[test]
+    fn rendering_palette_reads_use_the_shadow_buffer_and_immediate_scroll_strobe() {
+        let mut rom=vec![0;16+16384+8192];
+        rom[..4].copy_from_slice(b"NES\x1a");rom[4]=1;rom[5]=1;
+        let mut c=Cart::load(&rom).unwrap();
+        let mut p=Ppu::new();
+        p.scan=100;p.dot=22;p.mask=10;p.render_history=15;
+        p.v=0x3f00;p.buf=0xa5;p.pal[0]=63;
+        p.nt[c.nt_index(0x2f00)]=226;
+        assert_eq!(p.read_reg(&mut c,7),63);
+        assert_eq!(p.v,0x4f01);
+        assert_eq!(p.buf,0xa5);
+        for _ in 0..4 {p.tick(&mut c);}
+        assert_eq!(p.buf,226);
+        assert!(!p.read_hold_active);
+    }
+
+    #[test]
+    fn full_secondary_oam_alternates_buses_then_refreshes_y_after_overflow() {
+        let mut rom=vec![0;16+16384];
+        rom[..4].copy_from_slice(b"NES\x1a");rom[4]=1;
+        let mut c=Cart::load(&rom).unwrap();
+        for all_eligible in [false,true] {
+            let mut p=Ppu::new();
+            p.scan=160;p.dot=0;p.mask=20;
+            for n in 0..64 {
+                p.oam[n*4..n*4+4].copy_from_slice(&[
+                    if all_eligible || n<8 {160} else {200+(n%32) as u8},
+                    64+n as u8,128+n as u8,192+n as u8]);
+            }
+            while p.dot<133 {p.tick(&mut c);}
+            assert_eq!(p.read_reg(&mut c,4),160); // Secondary bus after an even dot.
+            p.tick(&mut c);
+            assert_eq!(p.read_reg(&mut c,4),if all_eligible {128} else {130});
+            while p.dot<137 {p.tick(&mut c);}
+            if all_eligible {
+                assert!(p.eval_done);
+                assert_eq!(p.read_reg(&mut c,4),160);
+            }
+            while p.dot<257 {p.tick(&mut c);}
+            assert_eq!(p.status&32,if all_eligible {32} else {0});
+        }
     }
 
     #[test]

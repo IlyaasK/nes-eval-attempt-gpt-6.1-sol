@@ -1831,3 +1831,34 @@ EvenNT/ATTRDATAfetch_addr75experiment (saved .out/ppu-even-fetch75-trial.rs)
 hasNOdifferencesinmixed16/captured4/115scroll/138bufferphaseprobes, kept
 isolated/notadopted. Next remaining:lateenableOAM init, fulloverflow even
 bus/indices, PPUREADbufferS1byte378623 native33ref226;MMC3continuousREADIRQ.
+
+## Accepted86: palette-read bypass and full-secondary OAM (17:27 UTC)
+PalettebufS1READ372651 actualV7F53→3F53 shadow2F53=226; oldqueuedfetch
+ATTR2FF4=33wrongbuflaterREAD378623. Original64primepaletteprobes3F00/10/53/
+FFF ×16CPUphases .out/ppu-palette-buffer78 show24buferrors; shadow+3fill
+fixesall64capturebytes. PALREADmustNOTholdbuf onBGADDRlow andMUSTincXY
+IMMEDIATELY. No-hold+4still234wrongpixels;delay0nexttick48wrong;immediate
+read_reginc yieldsALL64images+64capturebyteframes EXACT. NormalREAD +3BUF/
++4INC unchanged. Cartshadowpinsimmediate retained/no newINCcartGPIO.
+Palette84 mixedread16 improves28224pixels->28161;meanAudio162.05->141.60;
+S1capture13bad->8;S3allREAD+audiopeak1stillcorrect. MMC3continuousREAD36
+UNCHANGED(noimprovement) sinceGPIOedgesunchanged. 84all20kgames+30diag+
+215DMA exactimages/counts peak1.
+FullOAMCPUbus cannotalwaysreturnsecY (77trialwrong5phasecases). Full even
+processingreturnssecondaryY; oddprimaryreadsremainvisible. Afterfirst
+foundoverflowand3dummybytes, stopdiagonal/refreshprimaryY (new79). Eight-only
+eligible54caseprovedY RANGEtestusesMASKEDeval_latch, whilebyteCOPYusesRAW
+OAM(eval_value). Restoringmaskedcomparison fixesfalseoverflow(raw154range,
+masked130NOT). New86combinesPAL84+full79+maskedcompare andholdssecondaryY
+throughBGprefetchfornextdot0. ALL108full-OAMphasebyteprobes (54all64eligible,
+54only8eligible) EXACT;12unalignedspritevisual EXACT;18patternbyte EXACT.
+Late-enableinitSTILLuntouched:54oldstartprobesnow2bad,10Dot1enable5bad as
+expected;independentfull73lateinitmakes2oldtestsrightbut~180RGBnewerrors.
+86mixedreadpixels28163meanRMS142.16 (vs64 28236/224.16), write17776 (vs64
+17780). AllfourcapturesunchangedexceptPALfivebytescorrect. All20kgameframes
+exactpeak1,30diagimages/countsexactRMS.025peak1,215DMAimages/countsexactpeak1.
+69unitsPASSincludingfullsecondarybus/attributecompare/palshadow+immediate
+scroll tests. WASM86rebuiltandABIpalette4calls/S3input25validated.
+Saved .out/{ppu,cpu}86-accepted.rs. CPU/APUaccepted62unchanged.
+OAMstarttoolnewall-eligible/eight-eligible;phaseproberead --prime-address now.
+ContinueMMC3continuousreadIRQ/lateenableOAM/PPUreadS1last8mismatches.

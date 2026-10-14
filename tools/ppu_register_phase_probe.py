@@ -11,6 +11,7 @@ chr=q.with_suffix('.nes').read_bytes()[16+32768:];lines=q.with_suffix('.txt').re
 if a.kind=='enable':
  lines=[l for l in lines if l!='WRITE 51784 2001 30'];lines.append(f'WRITE {a.cycle} 2001 10')
 elif a.kind=='read':
+ if a.prime_address:lines.extend([f'WRITE {a.cycle-40} 2006 {a.address>>8}',f'WRITE {a.cycle-20} 2006 {a.address&255}'])
  lines.extend([f'READ {a.cycle} 2007',f'WRITE {a.cycle+20} 2001 0',f'READ {a.cycle+40} 2007'])
 elif a.kind=='data':
  if a.prime_address:lines.extend([f'WRITE {a.cycle-40} 2006 {a.address>>8}',f'WRITE {a.cycle-20} 2006 {a.address&255}'])
