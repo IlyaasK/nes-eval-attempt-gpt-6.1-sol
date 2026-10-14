@@ -457,6 +457,10 @@ impl Bus {
             eprintln!("RAM_READ {} {} {} {} {}", self.cycles, self.ppu.frame,
                 self.ppu.scan, self.ppu.dot, v);
         }
+        if (0x2000..0x4000).contains(&a) && a&7==7 &&
+            std::mem::take(&mut self.ppu.read_asserted_irq) {
+            self.last_irq=true;
+        }
         self.open = v;
         v
     }

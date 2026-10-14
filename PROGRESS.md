@@ -1785,3 +1785,22 @@ physicalbytes. Needpattern18+mixed16/write16 tests; artifact64unchanged.
 Current .out/ppu67-before-copy-m-reset.rs backup;66physical skeletongoodbut
 copy-phase lowbyte reset missing. Full-overflowdummy4-bytecopy mayneedM0
 resettoo afteroverflow_left decrements0;separatelymeasure afternormalcopyfixed.
+
+68normalcopyfinishM0 reset fixesALL18patterned(address1/2 repeat2ndeligible)
+AND67all54 startbytes. ButbroaderRGBAstillworse(oldWRITE17780->17956,
+mixed28236->28403), avgREADaudio224.16->226.89 soNOADOPTIONYET. NeedinitDot1
+enable latency, new10on/offphaseprobes .out/oam-enable-dot1-grid:
+maskdisable77730,enable77743..77752 aroundLine160DOT1=77748,AO1write77768,
+firstREAD77772;FF ifD1initcaptured0,161 ifD1missedand65liveAO1sampled.
+68history1 capturesprevdot immediateMASK; actualSpriteClearEnable may4DOT.
+
+TemporarilyrestoredPPU64forindependentIRQ69experiment (COPY68 saved
+.out/ppu68-before-early-irq-experiment.rs/native .out/run-copy-m68).
+Ppu.read_asserted_irq TrueONLYtransitionCartirqFalse->True fromrenderREAD7
+**immediate** address stage, NOTalreadytruefromPPUTICKoroffrenderpostinc.
+CPU.raw_read consumesflag into last_irq. EarlierfailedrawsetterwasANYCartirq
+true (alsoqueuedINC4/bgIRQduringtick), sothisnarrow versionmaycorrectearly
+readedgepollwithoutold30offrenderregression. Sourcecurrent69IRQtrial,
+backups .out/{ppu,cpu}-read-edge-irq69-trial.rs/native .out/run-read-edge-irq69.
+ArtifactWASM64stable. Need36IRQ/old30 results beforeadopt/reject; thenresume
+OAM68snapshot. AllCPU/APU62baselinebackups .out/cpu64-accepted.rs/.

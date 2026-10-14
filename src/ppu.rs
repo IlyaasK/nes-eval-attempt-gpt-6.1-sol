@@ -60,12 +60,12 @@ pub struct Ppu {
     eval_pos: usize,
     eval_latch: u8,
     eval_done: bool,
-    eval_initialized: bool,
     post_eval_valid: bool,
     post_eval_n: u8,
     post_eval_latch: u8,
     overflow_left: u8,
     pub nmi_line: bool,
+    pub read_asserted_irq: bool,
     suppress: bool,
     skip_render: bool,
     cart_addr_pending: Option<u16>,
@@ -124,12 +124,12 @@ impl Ppu {
             eval_pos: 0,
             eval_latch: 0,
             eval_done: false,
-            eval_initialized: false,
             post_eval_valid: false,
             post_eval_n: 0,
             post_eval_latch: 0,
             overflow_left: 0,
             nmi_line: false,
+            read_asserted_irq: false,
             suppress: false,
             skip_render: false,
             cart_addr_pending: None,
@@ -233,6 +233,7 @@ impl Ppu {
     }
     pub fn read_reg(&mut self, c: &mut Cart, reg: u16) -> u8 {
         let open = self.bus_get();
+        self.read_asserted_irq=false;
         #[cfg(feature="trace")]
         if matches!(reg & 7,2|4|7) {
             eprintln!("PPU_PORT {} {} {} {:04x} {:02x} buf={:02x} oam={} n={} m={} pos={} latch={} mask={}",
@@ -272,7 +273,9 @@ impl Ppu {
                     // Palette RAM is internal; its external read uses the
                     // nametable underneath it. The buffer and scroll strobes
                     // arrive separately, three and four dots later.
+                    let irq=c.irq;
                     c.address(if a>=0x3f00 {a-0x1000} else {a},self.ticks);
+                    self.read_asserted_irq=!irq && c.irq;
                     self.data_reads.push_back(self.ticks+3);
                     self.data_incs.push_back((self.ticks+4,a>=0x3f00));
                     return if a>=0x3f00 {
@@ -372,19 +375,15 @@ impl Ppu {
         self.athi =
             (self.athi & 0xff00) | if self.attr & 2 != 0 { 255 } else { 0 }
     }
-    fn initialize_evaluation(&mut self) {
-        self.eval_initialized=true;
-        self.eval_pos=0;
-        self.eval_n=self.oam_addr>>2;
-        self.eval_m=self.oam_addr&3;
-        self.eval_done=false;
-        self.overflow_left=0;
-        self.indices=[255;8];
-    }
     fn evaluate(&mut self) {
-        let d=self.dot;
-        if self.scan<240 && d>=65 && !self.eval_initialized {
-            self.initialize_evaluation();
+        let d = self.dot;
+        if d == 1 {
+            self.eval_pos = 0;
+            self.eval_n = self.oam_addr >> 2;
+            self.eval_m = 0;
+            self.eval_done = false;
+            self.overflow_left = 0;
+            self.indices = [255; 8];
         }
         if d <= 64 {
             if d & 1 == 0 { self.secondary[(d / 2 - 1) as usize] = 255 }
@@ -427,19 +426,15 @@ impl Ppu {
         let y = if self.scan == 261 { 255 } else { self.scan as u8 };
         let in_range = y >= self.eval_latch && y - self.eval_latch < height;
         if self.eval_pos < 32 {
-            if self.eval_pos&3 == 0 {
+            if self.eval_m == 0 {
                 // Y is written before the range test. A rejected sprite
                 // leaves its Y in the next otherwise empty secondary slot.
                 self.secondary[self.eval_pos]=self.eval_latch;
                 if in_range {
                     self.indices[self.eval_pos / 4] = self.eval_n;
                     self.eval_pos += 1;
-                    self.eval_m=(self.eval_m+1)&3;
-                    if self.eval_m==0 {self.eval_n=self.eval_n.wrapping_add(1);}
-                } else {
-                    self.eval_n=self.eval_n.wrapping_add(1);
-                    self.eval_m=0;
-                }
+                    self.eval_m = 1
+                } else { self.eval_n = self.eval_n.wrapping_add(1) }
             } else {
                 self.secondary[self.eval_pos] = self.eval_latch;
                 self.eval_pos += 1;
@@ -448,7 +443,6 @@ impl Ppu {
                     self.eval_m = 0;
                     self.eval_n = self.eval_n.wrapping_add(1)
                 }
-                if self.eval_pos&3==0 {self.eval_m=0;}
             }
         } else {
             if self.overflow_left > 0 {
@@ -587,10 +581,7 @@ impl Ppu {
         }
         if let Some(a) = self.cart_addr_pending.take() { c.address(a, self.ticks); }
         let d = self.dot;
-        if d==1 {
-            self.post_eval_valid=false;self.eval_initialized=false;
-            if self.render_history&1!=0 {self.initialize_evaluation();}
-        }
+        if d==1 {self.post_eval_valid=false;}
         let just_enabled = std::mem::take(&mut self.render_just_enabled);
         if self.scan == 261 && d == 338 {
             self.skip_render = self.rendering()
