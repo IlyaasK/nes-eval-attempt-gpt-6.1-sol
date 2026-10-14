@@ -60,6 +60,7 @@ pub struct Ppu {
     eval_pos: usize,
     eval_latch: u8,
     eval_done: bool,
+    eval_initialized: bool,
     post_eval_valid: bool,
     post_eval_n: u8,
     post_eval_latch: u8,
@@ -123,6 +124,7 @@ impl Ppu {
             eval_pos: 0,
             eval_latch: 0,
             eval_done: false,
+            eval_initialized: false,
             post_eval_valid: false,
             post_eval_n: 0,
             post_eval_latch: 0,
@@ -372,7 +374,8 @@ impl Ppu {
     }
     fn evaluate(&mut self) {
         let d = self.dot;
-        if d == 1 {
+        if d==1 || (d<=64 && !self.eval_initialized) {
+            self.eval_initialized=true;
             self.eval_pos = 0;
             self.eval_n = self.oam_addr >> 2;
             self.eval_m = 0;
@@ -576,7 +579,7 @@ impl Ppu {
         }
         if let Some(a) = self.cart_addr_pending.take() { c.address(a, self.ticks); }
         let d = self.dot;
-        if d==1 {self.post_eval_valid=false;}
+        if d==1 {self.post_eval_valid=false;self.eval_initialized=false;}
         let just_enabled = std::mem::take(&mut self.render_just_enabled);
         if self.scan == 261 && d == 338 {
             self.skip_render = self.rendering()

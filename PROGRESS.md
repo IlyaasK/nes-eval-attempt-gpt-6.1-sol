@@ -1726,3 +1726,32 @@ SecondaryemptyYwritealsofixes257firstemptyfetchYlast63-vsFF. Nopostcursor
 redirectCPU2003/2004 implementedyet;purewalkonly. RemainingOAMreaderrors
 mostlylate-enablemissedDot1/unalignedOAMaddr; oldfailedresume65trialsDO_NOT
 blindlyrestore. Needindependentcontrolledfreshprobesforinitialization.
+
+## Accepted64 artifact (OAMpostbus+secondarylastY)
+66units pass(integratedpostoddY/evensecondaryY/noOAMADDRadvance/fetchemptyY),
+all20kvariedgames/30diagnostics images/counts/audio unchangedpeak1;215DMA
+exactpeak1. Mixed16READaudioavg273.82 ->224.16 (pixelsunchanged28236), seeds3
+AND14 nowaudiopeak1 (S3all400-ishcapturedREADbytesexact). OldWRITE16pixels
+unchanged. WASM64nowbuilding/smoketested S3 25calls varinputs;backups
+.out/{ppu,cpu,apu,cart}64-accepted.rs/native .out/run-oam64-final.
+
+Newtools/ppu_register_phase_probe.py --prime-address forkinddata: setsPPUV
+via2006twowrites atWRITE-40/-20; unlikeold16READONLYCHR-VWRITEprobes, realNT
+RAM writes at2180initialV. New32phase originals .out/ppu-nt-write-grid,
+/tmp/ppu_nt_write_grid.py running. MayexplainremainingWRITE-stress andS3
+READallcorrectbutsmall79videoerrors. Rootsourcecurrentlyaccepted64 (noextra
+trial). Needcontinuelate-enable/unalignedOAMbus semantics ifNTwritealready
+correct. CPU/APU62unchanged; MM3continuousREADIRQstillknownremaining.
+
+OAM64accepted:66units/all20kvariedgames/30diagnostics/215DMA good. WASM64
+builtandABIS3readstream25calls/inputchecked .out/abi64-input-read.log.
+New32PRIMED-NTRAMwritephaseprobes all0pixels(.out/ppu-nt-write-grid), so
+WRITEaddress duringrender seemsalreadycorrect incontrolledRAMcases too.
+
+New65TRIAL evaluateinit atfirstRENDEREDCLEARdot<=64 ifmissedDot1. Keepsnormal
+Dot1init andNOreinit65. eval_initialized resetoutsideRender atlineDot1, sets
+oninit; re-enablelaterthislineafterpriorclear NOTreset. FixhypothesisS0
+READ72111dot140Y34 missingbecauseenable72080dot47 vsDot1maskedoff. Oldfailed
+firsteval>=65 resetchangedCPUADDR snapshot timing;before65only maybecorrect.
+Sourcecurrent65trial,64backup .out/ppu64-before-clear-resume.rs. Buildpending;
+need4captures+oldWRITE16/mixed16RGBA comparingto64 thencontrolledmaskphase.
