@@ -33,8 +33,10 @@ pub struct Ppu {
     athi: u16,
     tile: u8,
     attr: u8,
+    render_history: u8,
     bg_ready: bool,
     render_just_enabled: bool,
+    bg_fetch_low: u8,
     patlo: u8,
     pathi: u8,
     sprites: [Sprite; 8],
@@ -83,8 +85,10 @@ impl Ppu {
             athi: 0,
             tile: 0,
             attr: 0,
+            render_history: 0,
             bg_ready: false,
             render_just_enabled: false,
+            bg_fetch_low: 0,
             patlo: 0,
             pathi: 0,
             sprites: [Sprite::default(); 8],
@@ -294,7 +298,9 @@ impl Ppu {
                     self.t = (self.t & 255) | ((val as u16 & 63) << 8)
                 } else {
                     self.t = (self.t & 0x7f00) | val as u16;
-                    self.pending_v = Some((self.t,self.ticks+3));
+                    if self.rendering_line() {
+                        self.pending_v = Some((self.t,self.ticks+3));
+                    } else { self.v = self.t; self.pending_v = None; }
                     c.address(self.t & 0x3fff, self.ticks)
                 }
                 self.w = !self.w
@@ -518,9 +524,9 @@ impl Ppu {
                 c.address(((self.ctrl as u16 & 16) << 8) +
                             self.tile as u16 * 16 + ((self.v >> 12) & 7), self.ticks)
             }
-            if !just_enabled && ((2..=257).contains(&d) || (322..=337).contains(&d)) {
+            if (2..=257).contains(&d) || (322..=337).contains(&d) {
                 self.lo <<= 1;
-                self.hi = (self.hi << 1) | 1;
+                self.hi = (self.hi << 1) | !just_enabled as u16;
                 self.atlo <<= 1;
                 self.athi <<= 1
             }
@@ -528,34 +534,61 @@ impl Ppu {
                 match (d - 1) & 7 {
                     0 => {
                         self.load_shift();
-                        self.tile = self.read_fetch(c, 0x2000 | (self.v & 0xfff))
+                        let a = 0x2000 | (self.v & 0xfff);
+                        self.bg_fetch_low = a as u8;
+                        self.read_fetch(c,a);
+                    }
+                    1 => {
+                        let a = 0x2000 | (self.v & 0xf00) | self.bg_fetch_low as u16;
+                        self.tile = self.nt[c.nt_index(a)];
                     }
                     2 => {
-                        let a =
-                            0x23c0 | (self.v & 0xc00) | ((self.v >> 4) & 0x38) |
+                        let a = 0x23c0 | (self.v & 0xc00) | ((self.v >> 4) & 0x38) |
                                 ((self.v >> 2) & 7);
-                        let v = self.read_fetch(c, a);
-                        self.attr = (v >> (((self.v >> 4) & 4) | (self.v & 2))) & 3
+                        self.bg_fetch_low = a as u8;
+                        self.read_fetch(c,a);
                     }
-                    4 => { self.bg_ready = true; self.patlo = c.chr_read(
-                        ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
-                            + ((self.v >> 12) & 7)); },
-                    6 => self.pathi = c.chr_read(
-                        ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
-                            + ((self.v >> 12) & 7) + 8),
-                    7 => self.inc_x(),
-                    _ => {}
+                    3 => {
+                        let a = 0x2300 | (self.v & 0xc00) | self.bg_fetch_low as u16;
+                        let v = self.nt[c.nt_index(a)];
+                        self.attr = (v >> (((self.v >> 4) & 4) | (self.v & 2))) & 3;
+                    }
+                    4 => {
+                        self.bg_ready = true;
+                        let a = ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
+                            + ((self.v >> 12) & 7);
+                        self.bg_fetch_low = a as u8;
+                    }
+                    5 => {
+                        let a = ((self.ctrl as u16 & 16) << 8) |
+                            ((self.tile as u16 * 16) & 0xf00) | self.bg_fetch_low as u16;
+                        self.patlo = c.chr_read(a);
+                    }
+                    6 => {
+                        let a = ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
+                            + ((self.v >> 12) & 7) + 8;
+                        self.bg_fetch_low = a as u8;
+                    }
+                    7 => {
+                        let a = ((self.ctrl as u16 & 16) << 8) |
+                            ((self.tile as u16 * 16) & 0xf00) | self.bg_fetch_low as u16;
+                        self.pathi = c.chr_read(a);
+                        self.inc_x();
+                    }
+                    _ => unreachable!()
                 }
             }
-            if d == 256 { self.inc_y() }
+            if d == 256 && self.render_history & 2 != 0 { self.inc_y() }
             if d == 257 {
                 self.load_shift();
-                self.v = (self.v & !0x41f) | (self.t & 0x41f);
+                if self.render_history & 2 != 0 {
+                    self.v = (self.v & !0x41f) | (self.t & 0x41f);
+                }
                 self.next_count =
                     if self.scan == 261 { 0 } else { self.eval_pos / 4 };
                 self.next = [Sprite::default(); 8]
             }
-            if self.scan == 261 && (280..=304).contains(&d) {
+            if self.scan == 261 && (280..=304).contains(&d) && self.render_history & 2 != 0 {
                 self.v = (self.v & !0x7be0) | (self.t & 0x7be0)
             }
             if (1..=256).contains(&d) { self.evaluate() }
@@ -618,6 +651,7 @@ impl Ppu {
             if d == 339 { self.read_mem(c, 0x2000 | (self.v & 0xfff)); }
         }
         if self.scan < 240 && (1..=256).contains(&d) { self.render_pixel() }
+        self.render_history = ((self.render_history << 1) | self.rendering() as u8) & 15;
         self.ticks += 1;
         // At power-on frame zero already has the odd-frame phase. The
         // externally observed first run_frame is a no-op; do not use that

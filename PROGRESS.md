@@ -1216,3 +1216,29 @@ RMS RFK.000738/RHDE.06150/FF.09738/Stallar.16647 peak1 allgames.
 .out/dma-frame51-{games/results.json,diagnostic-comparison.json,sideeffects.json}.
 This incorporates accepted pulse49 and aborted-DMC latch50 as well.
 Next: expand MMC3 CPU-driven A12 clock probes and held-out DMA/APU streams.
+
+## In-progress PPU stress experiments — NOT adopted
+
+New tools/ppu_random_probe.py generated16original600-write streams with
+random CHR/NT/OAM, mid-render CTRL/MASK/SCROLL/ADDR/DATA/OAM writes plusDAC.
+264frames,211different frames initially. Audio tinyRMS.078..102 peak1.
+Fresh32held-out1200event ALL-channel+DMC+OAM streams300..331 allcounts/images
+exact,maxRMS.23177 peak2 (.out/apu-dma-heldout51/results.json).
+
+Source src/ppu.rs is currently TRIAL: hi-shifter constant1, bg_ready flag
+setlowfetch5/consumedload1, one-dot initial shift suppression afterenable,
+plus pending_v(second2006) transfer3dots later. AcceptedPPU backup:
+.out/ppu-frame51-accepted.rs. Required WASM remains accepted51 (not trial).
+Native trial copies run-hi-shift-ones-trial/run-bg-ready-trial/
+run-v-delay{2,3,4}-trial; defaultnative presently4 (source restored3).
+Failed latched BG patternaddr trial reverted; pins ALWAYSfreshCTRL6/8.
+
+Initialenable phase matrix16 andCHR0/FF/55/AA allEXACT with ready+firstshift
+suppression+hi1; constant1 alone insufficient. Subsequent16random streams
+stilldiffer, so doNOTaccept pipeline flags withoutmorevalidation.
+DelayedV3 improves totalpixelerrors substantially (>half), butnotall.
+Original16CPU2006phaseprobes .out/ppu-address-grid show3best:13exact, residual
+4/6/5pixels at84943/84949/84951; two-dot leavesmanyerrors including121pixels.
+Needisolate remainingfetchphase behavior, espNT/attribute/address latching.
+.doNOToverwritewasmwithtrial. .out/run-dma-frame-finish51 isacceptednative.
+Further64audio/DMA streams400..4631600events running .out/apu-dma-heldout52.log.
