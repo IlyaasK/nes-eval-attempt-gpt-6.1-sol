@@ -530,7 +530,17 @@ impl Ppu {
             if self.scan == 261 && (280..=304).contains(&d) {
                 self.v = (self.v & !0x7be0) | (self.t & 0x7be0)
             }
-            if (1..=256).contains(&d) && self.scan < 240 { self.evaluate() }
+            if (1..=256).contains(&d) {
+                if self.scan < 240 || d <= 64 {
+                    // The pre-render line clears secondary OAM too, even
+                    // though it does not select sprites for visibleline0.
+                    self.evaluate()
+                } else {
+                    // During pre-render's evaluation interval primary OAM
+                    // remains on the bus without advancing its evaluator.
+                    self.eval_latch = self.oam_read(self.oam_addr);
+                }
+            }
             if ((6..=256).contains(&d) || (326..=336).contains(&d))
                 && (d & 7 == 6 || d & 7 == 0)
             {
@@ -645,6 +655,36 @@ mod tests {
         assert_eq!(ppu.read_reg(&mut cart,4),255); // LastsecondaryX atdot320.
         ppu.tick(&mut cart);
         assert_eq!(ppu.read_reg(&mut cart,4),60); // PrimaryOAM outsidefetch.
+    }
+
+    #[test]
+    fn prerender_clears_bottom_line_secondary_sprites_without_evaluating_line_zero() {
+        let mut rom = vec![0; 16 + 16384];
+        rom[..4].copy_from_slice(b"NES\x1a");
+        rom[4] = 1;
+        let mut cart = Cart::load(&rom).unwrap();
+        let mut ppu = Ppu::new();
+        ppu.scan = 239;
+        ppu.dot = 1;
+        ppu.mask = 20;
+        ppu.oam.fill(255);
+        ppu.oam[..4].copy_from_slice(&[232,0,255,40]);
+        while ppu.dot < 257 { ppu.tick(&mut cart); }
+        assert_eq!(&ppu.secondary[..4], &[232,0,227,40]);
+        ppu.scan = 261;
+        ppu.dot = 0;
+        ppu.tick(&mut cart);
+        assert_eq!(ppu.read_reg(&mut cart,4),232);
+        while ppu.dot < 65 { ppu.tick(&mut cart); }
+        assert!(ppu.secondary.iter().all(|&v|v==255));
+        assert_eq!(ppu.read_reg(&mut cart,4),255);
+        ppu.tick(&mut cart);
+        assert_eq!(ppu.read_reg(&mut cart,4),232);
+        while ppu.dot < 257 { ppu.tick(&mut cart); }
+        assert_eq!(ppu.read_reg(&mut cart,4),232);
+        ppu.tick(&mut cart);
+        assert_eq!(ppu.read_reg(&mut cart,4),255);
+        assert_eq!(ppu.next_count,0);
     }
 
     #[test]
