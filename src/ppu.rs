@@ -525,12 +525,15 @@ impl Ppu {
                         let v = self.read_fetch(c, a);
                         self.attr = (v >> (((self.v >> 4) & 4) | (self.v & 2))) & 3
                     }
-                    4 => self.patlo = c.chr_read(
-                        ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
-                            + ((self.v >> 12) & 7)),
-                    6 => self.pathi = c.chr_read(
-                        ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
-                            + ((self.v >> 12) & 7) + 8),
+                    4 | 6 => {
+                        let a = ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
+                            + ((self.v >> 12) & 7) + if d & 7 == 7 { 8 } else { 0 };
+                        let value = c.chr_read(a);
+                        if d & 7 == 5 { self.patlo = value; } else { self.pathi = value; }
+                        // The address reaching the mapper on the next dot
+                        // belongs to this fetch, even if CPU $2000 changes.
+                        self.cart_addr_pending = Some(a);
+                    },
                     7 => self.inc_x(),
                     _ => {}
                 }
@@ -547,15 +550,6 @@ impl Ppu {
                 self.v = (self.v & !0x7be0) | (self.t & 0x7be0)
             }
             if (1..=256).contains(&d) { self.evaluate() }
-            if ((6..=256).contains(&d) || (326..=336).contains(&d))
-                && (d & 7 == 6 || d & 7 == 0)
-            {
-                // Background data is fetched on dots 5/7; its address
-                // reaches the cartridge one dot later. Sprite presentation
-                // has its separately measured phase at dot 260.
-                c.address(((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
-                    + ((self.v >> 12) & 7), self.ticks);
-            }
             if c.mapper == 4 && (d == 256 || d == 320) {
                 c.address(0x2000 | (self.v & 0xfff), self.ticks)
             }

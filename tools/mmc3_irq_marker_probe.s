@@ -68,11 +68,22 @@ bottom_oam:
  .res 252,$ea
 .endif
 forever:
+.ifdef SWITCH_CTRL
+ lda #(CTRL & $ef)
+ sta $2000
+ .repeat SWITCH_CTRL
+ nop
+ .endrepeat
+ lda #(CTRL | $10)
+ sta $2000
+ jmp forever
+.else
 .ifdef BRANCH_LOOP
  cmp $01
  beq forever
 .else
  jmp forever
+.endif
 .endif
 irq:
  pha

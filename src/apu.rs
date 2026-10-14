@@ -209,6 +209,8 @@ pub struct Apu {
     frame_mode: u8,
     frame_active_five: bool,
     frame_cycle: u32,
+    last_quarter_clock: Option<u64>,
+    last_half_clock: Option<u64>,
     reset_delay: u8,
     cycle: u64,
     pub audio: Vec<i16>,
@@ -242,6 +244,8 @@ impl Apu {
             frame_mode: 0,
             frame_active_five: false,
             frame_cycle: 8,
+            last_quarter_clock: None,
+            last_half_clock: None,
             reset_delay: 0,
             cycle: 8,
             audio: Vec::with_capacity(1500),
@@ -264,11 +268,18 @@ impl Apu {
         self.noise.timer = timer
     }
     fn quarter(&mut self) {
+        // A natural clock and the five-step reset can overlap. Its quarter
+        // and half pulses have independent two-clock windows; an extra
+        // pulse one CPU clock later does not clock that unit twice.
+        if self.last_quarter_clock.is_some_and(|t| self.cycle - t < 2) { return; }
+        self.last_quarter_clock = Some(self.cycle);
         for p in &mut self.pulse { p.env.clock(p.r[0]) }
         self.noise.env.clock(self.noise.r[0]);
         self.tri.quarter()
     }
     fn half(&mut self) {
+        if self.last_half_clock.is_some_and(|t| self.cycle - t < 2) { return; }
+        self.last_half_clock = Some(self.cycle);
         self.pulse[0].half(true);
         self.pulse[1].half(false);
         if self.tri.r[0] & 128 == 0 && self.tri.length > 0 {
@@ -492,6 +503,29 @@ mod tests {
         }
     }
 
+    #[test]
+    fn overlapping_frame_quarter_and_half_pulses_are_suppressed_independently() {
+        for (edge, gap, decay, length) in [
+            (7479,1,15,1), (7479,3,14,1),
+            (14935,1,14,1), (14935,3,13,0),
+        ] {
+            let mut apu = Apu::new();
+            apu.pulse[0].enable = true;
+            apu.pulse[0].length = 2;
+            apu.noise.enable = true;
+            apu.noise.length = 10;
+            apu.noise.r[0] = 32;
+            apu.noise.env.start = true;
+            while apu.cycle < 18 { apu.tick(); }
+            apu.write(0x4017,64);
+            let write = edge + gap - 4;
+            while apu.cycle < write { apu.tick(); }
+            apu.write(0x4017,192);
+            while apu.cycle < edge+gap { apu.tick(); }
+            assert_eq!(apu.noise.env.decay,decay);
+            assert_eq!(apu.pulse[0].length,length);
+        }
+    }
     #[test]
     fn triangle_length_reload_reaches_the_gate_after_a_coincident_timer_edge() {
         // Original seeded streams restore a stopped triangle exactly one

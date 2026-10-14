@@ -871,3 +871,59 @@ restore. Investigating via generictools/predict_mix_audio.py toinfer actual
 referenceedge andheldDAC fromknownpriorMIXevents. Native productAPU notyet
 changed. Currenttracebinary .out/run-trace stilloldDSP/pre-OAM butAPUunchanged
 forNROM andusedonlyeventtrace, notvalidation. src/audio productiontable4.
+
+## Triangle ultrasonic divider and length-reload edge fixed
+
+Originals0triangle predictedMIX fit identifiesreference's first DAC6 edgeat
+34815 ratherthannative34754. Period1at34025 mustfreeze remainingdivider62;
+restore257at34752 resumes62count, nextedge63clockslater. Triangle.timer now
+holdsdivideraswell assequenceforperiod0/1. Unitcovers727silentclocks then
+restore. Thisfix resolvesfiveoforiginaleightstreams; threeremaining failures
+isolatedtriangletoo. Actualsmallperiod0..15originalprobesprove0/1holdbut2/3
+run audibly: do NOTraiseultrasonicthreshold. Allnormal2..15RMS<.34peak1.
+
+Remainingseed1/2/7 writes$400btoexpiredlength oneclockbeforetimeredge. Reference
+skipsthatfirstedge (seed7holds4 vsnative3; seed1holds8 vsnative9), thenruns
+nextfulldivider. Triangle lengthreload nowpending; nexttimer snapshotsOLD
+lengthgate, appliespendingreloadbeforeframequarter/halfclock, thensequences
+witholdgate. Newunitperiod2->1794, expiredlength, skipsfirstedge andstepsat
+1795later. All8original streams nowRMS.149-.226peak1/2 (previoussevenlarge,
+seed0peak5921). Heldoutseeds100..115:15passRMS<.24peak1/2; seed105newNOISE
+envelope discrepancyRMS4.08peak312 firstPCM18069. Isolatedpulse1/2/tri all
+peak1;noisepeak229. Noise framequartervolume15->14 atCPU733633 appearsfirst
+source. Investigatingreset/envelope chronology; no noisechange yet.
+
+44units+ABI pass; requiredwasm rebuiltwithbothTrianglefixes. All20000game
+imagesand3668206samples match; audiounchangedfromtable4validatedresults
+RFK .000738/1,RHDE .06150/1,FF .09738/1,Stallar .16647/1.
+.out/triangle-length-games/results.json. All30diagnostics completedagain;
+comparisonnotyetrun. Fixednativebinary .out/run-tri-length-delay; tracecurrent
+newAPU .out/run-trace-length-delay. Sourceprodnormaldefaultallchangesaccepted.
+Avoidrebuildingdefaultnativewhiledefault-nativejobslaunchnewcases; usefixed
+binarycopiesforparalleltraces.
+
+## Overlapping frame strobes independently suppress extra Q/H clocks
+
+Heldoutseed105 noise envelope discrepancy isextraquarterclock: oldfive-mode
+halfedge701275 thenmode5reset701276 clocksquartertwice. Original102envelope
+probes (four/five mode; nearfirstquarter, half, final clock; offsets-8..8)
+only12mismatches, allresetoneCPUafteroldclock. BeforeRMS~397-541peak~4400;
+afterall102RMS<=.2524peak1. tools/frame_double_clock_probe.py.
+
+Halfandquarter MUST suppressindependently. Original8lengthflagprobes:
+resetoneafterquarter7479 stillclocksHALF (length2->1), while resetoneafter
+half14935 mustNOTclockhalf again (lengthremains1 vsnative0). Rejectingall
+strobessimultaneouslywouldfailfirstcase. Apu tracks lastactual Q/H clocks
+independently andignoresrepeatedsame-type clock withgap<2CPU. Unitcovers
+quarter/half gap1 vs3 andpulse length0/1. All8flagimagesexactnow. Seed105
+mixedaudioRMS4.078/peak312 ->.19089/peak1. predict_mix_audio.py nowcorrectly
+mergespre-output-delayimpulsesintoPCM0 integrator (filtersarenotclocked
+untilafter17discardedoutputs); thisfix letsfullmodelreproduceAPUnativeaudio,
+andpredictedoneenvelopeskip matchesrefRMS.1467peak1.
+
+45units+ABI pass; wasmrebuilt. Full30diagnostics rerunning afterguard.
+Latestnewvideo/mmc3probes48CTRLbit4toggling layouts×latch×padding inprogress,
+conditional SWITCH_CTRL addedoriginalIRQmarkerfixture. Currentnativecopied
+.out/run-frame-clock-overlap (stabletraceOFF). AcceptedprodAPUallthreefixes;
+noexperimentalDSP. Broad5000games alreadyall20kimagesexactbeforeoverlap,
+withsameaudioRMSastable4. Overlaprare butfullgamerecheckafterguard stilldue.

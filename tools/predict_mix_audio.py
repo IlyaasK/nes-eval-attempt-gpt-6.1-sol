@@ -20,7 +20,7 @@ def predict(events,table,n):
   q=min(int(np.float32(frac*256)),255)
   if frac==0:head-=1;q=255
   for j,k in enumerate(table[q]):
-   if 0<=head+j<len(imp):imp[head+j]+=(value-old)*k
+   if head+j<len(imp):imp[max(0,head+j)]+=(value-old)*k
   old=value
  src=pathlib.Path('src/audio.rs').read_text();cdf0=np.array([float(x) for x in re.search(r'STARTUP:.*?= \[(.*?)\];',src,re.S).group(1).replace(',',' ').split()])
  cdf=np.r_[cdf0,np.ones(n-len(cdf0))]
