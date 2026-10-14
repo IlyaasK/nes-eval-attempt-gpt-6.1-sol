@@ -290,6 +290,12 @@ impl Apu {
         }
     }
     pub fn write(&mut self, a: u16, v: u8) {
+        #[cfg(feature="trace")]
+        if a == 0x4010 || a == 0x4015 {
+            eprintln!("DMC_STATE {} {:04x} {} rate={} timer={} bits={} silent={} shift={} buffer={:?} left={}",
+                self.cycle,a,v,self.dmc_r[0],self.dmc_timer,self.dmc_bits,
+                self.dmc_silent,self.dmc_shift,self.dmc_buffer,self.dmc_left);
+        }
         match a {
             0x4000..=0x4007 =>
                 self.pulse[((a - 0x4000) / 4) as
