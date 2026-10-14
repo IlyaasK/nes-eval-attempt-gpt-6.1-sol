@@ -549,3 +549,39 @@ images, then could divide byzero reading the reset vector. Cart::load now
 rejects PRG<16KiB. UxROM fixed-window arithmetic rewritten n-2+slot%2 to
 avoid a debug underflow with a single16KiB bank. Newunit covers rejection
 and single-bank reset-vector mapping. New34unit/build checks running.
+
+Bundled diagnostics after all current fixes: all30 final images andall30
+audio samplecounts matchreference. Maximum audio RMS .030205 (APU length
+timing); peaks1 everywhere except PPU NMI-on timing2. Detailed current
+results .out/phase-final-diagnostic-comparison.json, native status output
+.out/phase-final-diagnostics.log. Required wasm built with34unit tests.
+32 original immediate8B/AB opcode probes varyingA/operand andcapturingA/P
+allmatch full8bit palette+emphasis output. tools/unofficial_probe.s and
+.out/unofficial/results.json retainproof.
+
+## Active new discrepancy: DMC load colliding with PPUDATA instruction
+
+Original tools/ppu_dmc_probe.s initializes CHR17/34/51/etc, starts DMC,
+then reads2007 immediately. Sixteen parity/NOP/prime combinations:14match,
+two fail (PARITY0,EXTRA_NOPS0,PRIME0/1). Native returns0/17 vsreference17/34
+with audio RMS131/117. Allothercasesmatchaudio<.09. In failingcase enable
+write30859odd, DMC_HALT30862 heldCPUoperand-highaddress8063, DMC_GET30864,
+actualPPUDATAread30866. Reference behaves as oneextraPPUDATAread eventhough
+DMA halts the preceding operand fetch. PARITY1 enables30862even, halts
+2007at30866, rawholdreads30866/30867,GET30868,realread30869; native/reference
+both return34. Do not blindly changeDMAgettiming or rawholdreads.
+
+STRICT proof: take failing nativeMIX trace, change finalDAC0->17 andevery
+subsequent DMC level+17; build original DAC-only replay at ALLunchanged CPU
+write timestamps. Oracle replay vsfailing original produces RMSE0,peak0.
+LastCPU4011write30882 is alreadycorrect; shiftingit±1 producesRMS~4.97.
+Artifacts .out/ppu-dmc/full-replay0.*,p0-full.trace,results.json,p?-n?-b?.trace.
+Thus fix side effects, not CPU stall length. CPU trace now optionally emits
+DMC_HALT, DMC_GET and PPU_READ for this investigation. Controller variant
+READ_REGISTER4016 withkeysAA is running, to determine whether the extra
+read is generic or specific to PPUDATA. Native binary is being rebuilt
+withouttrace by that job. Source has no tentativeDMAbehavior changes yet.
+
+CNROM reference rejects CHR-RAM images (16/32KiBPRG, CHRRAMheader shifts
+0/6/7/8 allreject) andaccepts8KiBCHRROM. Loader now requiresCHRROMformapper3.
+Unit added; runfulltests/build after resolving the current investigation.

@@ -241,6 +241,10 @@ impl Bus {
         if !was_halted && (oam_started || dmc_started) {
             if let CycleOp::Read(a) = op { self.dma_halt_addr = a; }
         }
+        #[cfg(feature="trace")]
+        if dmc_started {
+            eprintln!("DMC_HALT {} {:04x}", self.cycles, self.dma_halt_addr);
+        }
         self.last_dma_cycle = self.oam_active || self.dmc_active;
         if self.last_dma_cycle {
             let dmc_get = !dmc_started && get_cycle &&
@@ -277,6 +281,9 @@ impl Bus {
                 }
                 DmaAction::DmcGet(a) => {
                     let v = self.raw_dma_read(a);
+                    #[cfg(feature="trace")]
+                    eprintln!("DMC_GET {} {:04x} {:04x} {}", self.cycles,
+                        a, self.dma_halt_addr, v);
                     self.apu.dmc_supply(v);
                     self.dmc_active = false;
                     self.dmc_stage = None;
@@ -337,6 +344,10 @@ impl Bus {
                 0x4000..=0x401f => self.open,
                 _ => self.cart.read(a, self.open),
             };
+        #[cfg(feature="trace")]
+        if (0x2000..0x4000).contains(&a) && a & 7 == 7 {
+            eprintln!("PPU_READ {} {:04x} {}", self.cycles, a, v);
+        }
         #[cfg(feature="trace")]
         if a == 0x6000 && self.cart.mapper == 1 && self.cart.ram.len() > 8192 {
             eprintln!("RAM_READ {} {} {} {} {}", self.cycles, self.ppu.frame,

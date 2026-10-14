@@ -47,7 +47,8 @@ impl Cart {
         // The reference rejects PRG images smaller than one 16 KiB bank,
         // including NES2 exponent sizes. Such images cannot supply the
         // mapper windows assumed below and must fail before CPU startup.
-        if ps < 16384 || offset.checked_add(ps)?.checked_add(cs)? > b.len() {
+        if ps < 16384 || (mapper == 3 && cs == 0)
+            || offset.checked_add(ps)?.checked_add(cs)? > b.len() {
             return None
         }
         let ram_size =
@@ -500,5 +501,10 @@ mod tests {
         let c = Cart::load(&image(2, 1, 0)).unwrap();
         assert_eq!(c.read(0xfffc, 0), 1);
         assert_eq!(c.read(0xc000, 0), 0);
+    }
+    #[test]
+    fn cnrom_requires_chr_rom() {
+        assert!(Cart::load(&image(3, 1, 0)).is_none());
+        assert!(Cart::load(&image(3, 1, 1)).is_some());
     }
 }
