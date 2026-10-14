@@ -523,6 +523,22 @@ mod tests {
     }
 
     #[test]
+    fn one_clock_late_dmc_delivery_requires_a_continuing_reader() {
+        for (length,looping,expected) in [(0,false,64),(1,false,66),(0,true,66)] {
+            let mut apu = Apu::new();
+            while apu.cycle < 22 { apu.tick(); }
+            apu.write(0x4010,15 | if looping {64} else {0});
+            apu.write(0x4011,64);
+            apu.write(0x4013,length);
+            while apu.cycle < 804 { apu.tick(); }
+            apu.write(0x4015,16);
+            while apu.cycle < 810 { apu.tick(); }
+            apu.dmc_supply(255);
+            while apu.cycle < 863 { apu.tick(); }
+            assert_eq!(apu.dmc_out,expected);
+        }
+    }
+    #[test]
     fn overlapping_frame_quarter_and_half_pulses_are_suppressed_independently() {
         for (edge, gap, decay, length) in [
             (7479,1,15,1), (7479,3,14,1),

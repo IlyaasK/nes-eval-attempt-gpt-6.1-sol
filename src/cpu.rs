@@ -241,7 +241,8 @@ impl Bus {
                 self.oam_have_data = false;
                 oam_started = true;
             }
-            if !self.dmc_active && self.dmc_pending_at.is_some_and(|t| t <= next_cycle) {
+            if !self.dmc_active && self.last_dmc_get != Some(next_cycle - 1)
+                && self.dmc_pending_at.is_some_and(|t| t <= next_cycle) {
                 self.dmc_pending_at = None;
                 self.dmc_active = true;
                 self.dmc_stage = Some(DmcDmaStage::Dummy);
@@ -987,11 +988,11 @@ mod dma_timing_tests {
 
     #[test]
     fn dmc_initial_load_straddling_output_boundary_loses_or_accelerates_a_reload() {
-        for (length,enable,last_get,address,left) in [
-            (1u8,802u64,808,0xc801,16),
-            (1,804,814,0xc802,15),
-            (1,806,812,0xc801,16),
-            (0,804,810,0xc801,0),
+        for (length,enable,last_get,address,left,stalls) in [
+            (1u8,802u64,808,0xc801,16,3),
+            (1,804,814,0xc802,15,6),
+            (1,806,812,0xc801,16,3),
+            (0,804,810,0xc801,0,3),
         ] {
             let mut rom = vec![0;16+32768];
             rom[..4].copy_from_slice(b"NES\x1a");
@@ -1007,7 +1008,12 @@ mod dma_timing_tests {
             rom[16+0x4800] = 255;
             rom[16+32764..16+32766].copy_from_slice(&0x8000u16.to_le_bytes());
             let mut nes = Nes::new(Cart::load(&rom).unwrap());
-            while nes.bus.borrow().cycles < 819 { nes.clock(); }
+            let mut halted = 0;
+            while nes.bus.borrow().cycles < 819 {
+                nes.clock();
+                if nes.bus.borrow().last_dma_cycle { halted += 1; }
+            }
+            assert_eq!(halted,stalls);
             let b = nes.bus.borrow();
             assert_eq!(b.last_dmc_get,Some(last_get));
             assert_eq!(b.apu.dmc_addr,address);

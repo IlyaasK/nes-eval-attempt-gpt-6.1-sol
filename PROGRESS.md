@@ -1003,3 +1003,29 @@ Needprovebothrawmodels beforeimplementinggenericpipeline state. Current
 allsourceprodacceptedexceptnewtrace-onlyprint; WASM stillacceptedCart9/APU.
 Currentstabledefaultnative .out/run-a12-nine-trial / .out/run-frame-clock-overlap;
 trace .out/run-trace-dmc-state. Lastdefaultbinarymaytrace untilnextbuild.
+
+## DMC boundary pipeline trial: rawaudio proven, CPU warmdown correction
+
+StrictoracleDAC-onlymodels nowPROVEref80217bytefirstFF863..1241 thenone
+SILENTpacket80held untilfirstzero1727; ref80417byteordinaryFF863..1241 then
+zero1295. BothmodelsoraclePCMbyte-exact (RMS0). It isNOTduplicatedFFbyte.
+AddedgenericAPU byteboundaryclock tag; continuingreaderGEToneclockafterempty
+boundary takesdataintocurrentshifter andrequestsnextprefetch. Lastbyteleft0
+suppressesdirecthandoff, explainingallonebytecases. Bus requestatGET+1is
+suppressed (lostreload), retriedatnextbyteboundary evenwhenalreadyempty.
+Initialtrialmatchesall20late-startWAVspeak1 BUTseed10gotworse dueCPUstalls.
+
+SecondstrictoracleDAC-onlymarker experimentdeterminesstallcost: enable802
+multi-byte markerplanned822 actual825 (3stalls, notold7); enable804 marker
+planned824 actual830 (6stalls, notold3 ortrial7). Thereforependingnextprefetch
+cannotHALTonclockGET+1; CPUexecutesoneclockthenHALTsGET+2, giving3+3stalls.
+AddedBus.execute cooldownforanynewDMC haltatlastGET+1. UnitactualCPUNOPprogram
+checksinitialenable802/804/806,singlebyte804, address/left/lastGET andstall
+3/6/3/3. 47units currentlypass; newcompilednative pendingvalidation.
+
+TheseDMAchangesareSTILLTRIALsource untilseed10 andoldDMAprobe regressions
+pass. WASM remainsacceptedCart9/APUpriorpipeline. Backups
+.out/{apu,cpu}-before-dmc-load-boundary.rs. Initialfailedtrialbinary
+.out/run-dmc-load-boundary-trial; latestsourcewarmdowncorrected beingbuilt.
+Trace-onlyDMC_STATE retainedforfutureinvestigation. Currentrealgame/full
+30diagCart9 regressionscompleted, comparison stilldue. NoROMspecificdetection.
