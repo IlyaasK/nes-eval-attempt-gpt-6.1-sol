@@ -665,3 +665,43 @@ LDA2007 nearreload31625 toidentify whetherCPUstores preserve/repeat the
 previousdataportread. Targets4011/6000/2000/4000,3NOPalignments,2parities,
 24cases running .out/ppu-dmc-store/results.json. KeepcurrentCPU fix until
 thisprovidesbettergeneralmodel. NoAPUwrite-order changehasbeenmade.
+
+## Explicit DMC stop DMA glitches fixed
+
+New tools/dmc_stop_probe.py isolates stop cycles803..812 aroundbufferempty
+809 with a DAC marker20clocks later. Ref/native initiallydisagree forstop
+806/807(RMS3.6),808/809(RMS~99); allothercasesmatch. Apu now schedules
+one-clock abortedreload atemptywhenstopped2/3CPUearly, andretainsfullDMA
+whenstopped1CPUearly orontheemptyclock. Bus mergesabortedhaltwithOAM or
+cancelsitonCPUwrite; retainedfullDMA ignoresthezero-reader-lengthcancel.
+APU.supplyallows retainedbytewithoutunderflowing/restartingdisabledreader.
+All10originalstopprobesnowRMS<.071,peak1 (.out/dmc-stop/*-fixed).
+37units+ABIpass andwasmrebuilt. NewCPUunit'sactualmarker timestamps828for
+stop807 and832forstop809 matchreference. Backups
+.out/{apu,cpu}-before-stop-dma.rs. Implicitone-byte endingbugsarenotyet
+implemented; investigatewithoriginalprobesnext.
+
+## Late PPUDATA/DMC discrepancy narrower than previous hypotheses
+
+Originaltools/dmc_late_read_probe.py reproducesfirststreamerrorinvideo:
+keepDMCsetup30777/30783/30789/30795;delay with723DMAclocks;primePPUaddr6;
+reads108562->6,108575->7,write7at108579, DMCget108582, finalread108591->8
+native,9reference. CHRRAM/CHRROMbothfail identically. DifferentDMC length
+17/33bytesdoesnotchangeit. ShiftCHRdata so lastread/writevalue1,0,8..23:
+ALLmatch. Thefailure requireslastCPUbus value7, notgeneraldataoffset!
+Changingreadportto200F(whichstillmapsPPUDATA)avoidsit. STORE6001/4000/2003
+insteadof4011stillfailsifvalue7. STY withY0/1/6/8 matches;Y7fails, even
+whenwritingRAM6001 andPpuBusstill7. Thus CPU's data bus, notPPUbus, controls
+thisextra read. Thismayreflectreference'scached peripheral callback/dummy
+read using thebus value asregisterindex. DO NOTaddROM-specificmagic;
+measurea generalbus rule. 
+
+Snapshot --intervening-read replaces3clockdelaywithBIT00afterlastPPUDATA
+read(beforewrite7), tocheckwhetherordinarydatareads clearcachedPPUread.
+Status-read snapshotsatDMCedge58467 duringvblank inspectbus values0..8
+forphantomPPUSTATUS(2)/OAMDATA(4)/PPUDATA(7)accesses. Resultsongoingin
+.out/ppu-dmc-late; toolsupports --edge-cycle,--after-port,--store-y,--read-port.
+Mirrored200FY15also tested tocheckcanonical-address filtering. NOP/branch/
+opcodefetchmaynotreplace theprevious meaningful dataperipheral callback.
+24early-storeprobes .out/ppu-dmc-store/results.json allmatchbecauseCPUbus
+valuewas0, not7. Full37sourcebuildcontainsNOtentativelatePPUbusfixyet.

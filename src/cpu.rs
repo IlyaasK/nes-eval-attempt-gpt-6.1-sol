@@ -175,6 +175,7 @@ pub struct Bus {
     last_dmc_get: Option<u64>,
     dmc_read_after_address: bool,
     dmc_open_before_get: u8,
+    dmc_forced: bool,
     request: Option<CycleOp>,
     result: Option<u8>,
 }
@@ -209,6 +210,7 @@ impl Bus {
             last_dmc_get: None,
             dmc_read_after_address: false,
             dmc_open_before_get: 0,
+            dmc_forced: false,
             request: None,
             result: None,
         }
@@ -223,10 +225,12 @@ impl Bus {
         let next_cycle = self.cycles;
         let get_cycle = next_cycle & 1 == 0;
         let cpu_read = matches!(op, CycleOp::Read(_));
+        let aborted_reload = self.apu.dmc_abort_at == Some(next_cycle);
+        if aborted_reload { self.apu.dmc_abort_at = None; }
         let was_halted = self.oam_active || self.dmc_active;
         let mut oam_started = false;
         let mut dmc_started = false;
-        if !self.apu.dmc_need() && !self.dmc_active {
+        if !self.apu.dmc_need() && !self.dmc_active && !self.dmc_forced {
             self.dmc_pending_at = None;
         }
         if cpu_read {
@@ -252,6 +256,16 @@ impl Bus {
             eprintln!("DMC_HALT {} {:04x}", self.cycles, self.dma_halt_addr);
         }
         self.last_dma_cycle = self.oam_active || self.dmc_active;
+        if aborted_reload && cpu_read && !self.last_dma_cycle {
+            // This request has only its halt clock, with no dummy or get.
+            // A coincident CPU write cancels it; an OAM DMA can absorb it.
+            if let CycleOp::Read(a) = op { self.dma_halt_addr = a; }
+            self.last_dma_cycle = true;
+            let open = self.open;
+            self.raw_read(self.dma_halt_addr);
+            self.open = open;
+            return false;
+        }
         if self.last_dma_cycle {
             let dmc_get = !dmc_started && get_cycle &&
                 matches!(self.dmc_stage, Some(DmcDmaStage::Get));
@@ -294,6 +308,7 @@ impl Bus {
                         a, self.dma_halt_addr, v);
                     self.apu.dmc_supply(v);
                     self.dmc_active = false;
+                    self.dmc_forced = false;
                     self.dmc_stage = None;
                 }
             }
@@ -327,6 +342,11 @@ impl Bus {
         self.cycles += 1;
         let dmc_needed = self.apu.dmc_need();
         self.apu.tick();
+        if self.apu.dmc_extra_at.is_some_and(|t| t <= self.cycles) {
+            let t = self.apu.dmc_extra_at.take().unwrap();
+            self.dmc_pending_at = Some(t);
+            self.dmc_forced = true;
+        }
         if !dmc_needed && self.apu.dmc_need() && !self.dmc_active {
             // The reader requests RDY in the PUT phase which transfers the
             // sample buffer to the output shifter, including this clock.
@@ -1153,6 +1173,38 @@ mod dmc_dma_tests {
             &[0xb1,0x10,0x29,1], false), 1);
         // The page-crossing dummy read consumes it before accessing the pad.
         assert_eq!(run(&[0xa2,23], &[0xbd,0xff,0x3f,0x29,1], false), 0);
+    }
+
+    #[test]
+    fn stopping_dmc_retains_aborted_and_already_scheduled_reloads() {
+        // Original probe stops at807, two clocks before buffer transfer809.
+        // Its DAC marker normally writes at827; the aborted halt moves it
+        // to828. Moving the stop to809 retains a full DMA and writes at832.
+        let original = [
+            0x78,0xa9,0x40,0x8d,0x17,0x40,0xa9,0x0f,0x8d,0x10,0x40,
+            0xa9,0x40,0x8d,0x11,0x40,0xa9,0x20,0x8d,0x12,0x40,
+            0xa9,1,0x8d,0x13,0x40,0xa9,0x10,0x8d,0x15,0x40,
+            0xa2,0x95,0xca,0xd0,0xfd,0xa2,1,0xca,0xd0,0xfd,
+            0xa9,0,0x8d,0x15,0x40,0xa2,3,0xca,0xd0,0xfd,0x8d,0x11,0x40,
+        ];
+        for (shift, marker) in [(false,828), (true,832)] {
+            let mut code = original.to_vec();
+            if shift { code.insert(41, 0xea); }
+            let end = 0x8000 + code.len() as u16;
+            code.extend_from_slice(&[0x4c,end as u8,(end >> 8) as u8]);
+            let mut rom = vec![0; 16 + 32768];
+            rom[..4].copy_from_slice(b"NES\x1a");
+            rom[4] = 2;
+            rom[16..16 + code.len()].copy_from_slice(&code);
+            rom[16 + 0x4800..16 + 0x4900].fill(255);
+            rom[16 + 32764..16 + 32766].copy_from_slice(&0x8000u16.to_le_bytes());
+            let mut nes = Nes::new(Cart::load(&rom).unwrap());
+            while !matches!(nes.bus.borrow().request,
+                Some(CycleOp::Write(0x4011,0))) { nes.clock(); }
+            nes.clock();
+            assert_eq!(nes.bus.borrow().cycles, marker);
+            assert_eq!(nes.bus.borrow().apu.dmc_left, 0);
+        }
     }
 
     #[test]

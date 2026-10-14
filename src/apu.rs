@@ -189,6 +189,9 @@ pub struct Apu {
     dmc_r: [u8; 4],
     pub dmc_addr: u16,
     pub dmc_left: u16,
+    pub dmc_abort_at: Option<u64>,
+    pub dmc_extra_at: Option<u64>,
+    dmc_buffer_clock: Option<u64>,
     dmc_buffer: Option<u8>,
     dmc_shift: u8,
     dmc_bits: u8,
@@ -219,6 +222,9 @@ impl Apu {
             dmc_r: [0; 4],
             dmc_addr: 0xc000,
             dmc_left: 0,
+            dmc_abort_at: None,
+            dmc_extra_at: None,
+            dmc_buffer_clock: None,
             dmc_buffer: None,
             dmc_shift: 0,
             dmc_bits: 8,
@@ -288,6 +294,22 @@ impl Apu {
                 self.noise.enable = v & 8 != 0;
                 if !self.noise.enable { self.noise.length = 0 }
                 if v & 16 == 0 {
+                    if self.dmc_left != 0 {
+                        // Stopping in the APU cycle before a buffered byte
+                        // transfers schedules a one-clock aborted reload.
+                        // The following APU cycle retains a full request,
+                        // even though its reader length is now zero.
+                        if self.dmc_buffer.is_some() && self.dmc_bits == 1 {
+                            match self.dmc_timer {
+                                1 | 2 => self.dmc_abort_at =
+                                    Some(self.cycle + self.dmc_timer as u64 + 1),
+                                0 => self.dmc_extra_at = Some(self.cycle + 1),
+                                _ => {},
+                            }
+                        } else if self.dmc_buffer_clock == Some(self.cycle) {
+                            self.dmc_extra_at = Some(self.cycle);
+                        }
+                    }
                     self.dmc_left = 0
                 } else if self.dmc_left == 0 { self.dmc_restart() }
                 self.dmc_irq = false
@@ -311,6 +333,9 @@ impl Apu {
         self.dmc_buffer = Some(v);
         self.dmc_addr =
             if self.dmc_addr == 65535 { 0x8000 } else { self.dmc_addr + 1 };
+        // A retained request after a stop still fills the output buffer.
+        // It does not restart the disabled reader or underflow its length.
+        if self.dmc_left == 0 { return; }
         self.dmc_left -= 1;
         if self.dmc_left == 0 {
             if self.dmc_r[0] & 64 != 0 {
@@ -376,6 +401,7 @@ impl Apu {
             if self.dmc_bits == 0 {
                 self.dmc_bits = 8;
                 if let Some(v) = self.dmc_buffer.take() {
+                    self.dmc_buffer_clock = Some(self.cycle);
                     self.dmc_silent = false;
                     self.dmc_shift = v
                 } else { self.dmc_silent = true }
