@@ -180,7 +180,11 @@ impl Cart {
                 self.mirror =
                     match self.control & 3 { 0 => 2, 1 => 3, 2 => 1, _ => 0, };
             }
-            2 | 3 => self.bank = v,
+            2 => self.bank = v,
+            // CNROM's register and PRG ROM drive the bus together. The
+            // reference applies conflicts even to NES2 submapper1, while
+            // its UxROM implementation accepts the CPU value directly.
+            3 => self.bank = v & self.read(a, 0),
             4 =>
                 match a & 0xe001 {
                     0x8000 => self.select = v,
@@ -335,9 +339,22 @@ mod tests {
     #[test]
     fn cnrom_chr_banks() {
         let mut c = Cart::load(&image(3, 2, 4)).unwrap();
+        c.prg[0] = 255;
         c.write(0x8000, 3, 0);
         assert_eq!(c.chr_read(0),24);
         assert_eq!(c.chr_read(0x1fff),31);
+    }
+    #[test]
+    fn cnrom_conflicts_use_the_rom_byte_at_the_written_address() {
+        let mut c = Cart::load(&image(3, 2, 4)).unwrap();
+        c.prg[0] = 1;
+        c.prg[1] = 2;
+        c.write(0x8000, 3, 0);
+        assert_eq!(c.chr_read(0), 8);
+        c.write(0x8001, 3, 1);
+        assert_eq!(c.chr_read(0), 16);
+        c.write(0xc000, 1, 2);
+        assert_eq!(c.chr_read(0), 0);
     }
     #[test]
     fn mmc1_serial_write_and_rmw_filter() {

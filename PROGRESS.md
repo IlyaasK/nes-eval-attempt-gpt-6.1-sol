@@ -444,3 +444,60 @@ hardware bus conflicts based solely on the NESdev docs withoutoracleprobes.
 Current next work: original MMC1 board/outer-bank/RAM probes and CNROM,
 rendering/PPUDATA/OAM edge cases, more varied inputs, and exact normal FIR/
 phase/mixer arithmetic. The task remains active indefinitely; no conclusion.
+
+## MMC1 expansion and rendering address pins verified
+
+MMC1 PRG outer bank, SOROM/SXROM RAM banking, and SNROM RAM disable now
+follow the active PPU address in 4 KiB CHR mode. Twenty-five original board
+probes match final oracle images. Expansion pins are used with 8 KiB CHR;
+larger CHR-ROM ignores them in the reference. SNROM's CHR bit4 RAM disable
+requires CHR-RAM, <=256 KiB PRG and 8 KiB RAM. CPU $2006 writes select the
+pins immediately, even without a subsequent $2007 access.
+
+Rendering fetches present MMC1 addresses one dot after their data access;
+background pattern pins rise at6/8, sprite pins retain early260. End-of-line
+nametable fetches337/339 present immediately. MMC3-only synthetic low edges
+256/320 must not change MMC1's pins. PPU cart_addr_pending implements the
+ordinary fetch delay without delaying CPU port accesses.
+
+tools/mmc1_ram_phase_probe.s streams selected RAM values into $4011 while
+rendering. Eight PPU layouts times eleven CPU alignments (88 original ROMs,
+20 frames each) all match samplecounts, max audio RMSE .425911, peak6.
+Results .out/mmc1-phase/sweep/results.json. Generic DAC fitting isolated
+161 wrong reads at dot337; flipping the inferred values there and replaying
+their exact CPU write timestamps through an original DAC-only ROM produced
+oracle RMSE0, proving the pin timing independently of the approximate FIR.
+The verified source has NO CPU instruction snapshot of MMC1 pins.
+
+RHDE's 5000-frame varied-input replay has now been rerun after the delayed
+MMC1 fetch changes: every frame remains exact, audio RMSE .073714 peak2.
+The MMC1 pin probe's wasm framebuffer/audio hashes equal the native runner,
+13925 samples for20 calls. There are no host imports.
+
+31 unit tests plus the ABI test pass; required wasm was rebuilt. New tests
+protect board expansion conditions, SNROM disable, and delayed ordinary /
+immediate end-of-line fetch pins. Latest RHDE5000 check before the PPU pin
+delay matched every image; rerun after the delay for final regression.
+
+## CNROM bus conflicts fixed
+
+CNROM, unlike the reference UxROM, ANDs bank writes with the ROM byte at the
+write address. Original tools/cnrom_conflict_probe.s varies that byte through
+0/1/2/3/255 with CPU value3, legacy and NES2 submapper0/1/2 headers. All20
+images now match; before the fix the first12 selected incorrect CHR bank3.
+The reference applies conflicts even to NES2 submapper1. Cart::write now
+applies this AND only for mapper3. Unit protects the address-specific ROM
+drive; existing CNROM bank test now uses a $FF ROM byte.
+
+The same original ROM has a STREAM mode repeatedly switching banks and
+reading CHR into $4011. Forty calls produce28601 samples, RMSE .328798,
+peak3. Wasm and native hashes match. 32 units+ABI pass; required wasm built.
+Artifacts .out/cnrom/, tools/cnrom_probe.cfg. Explicit NES2 CHR-RAM shifts
+0/1/4/5/6/7/8/9 all behave as at least8KiB in the reference (no $0000->$1000
+mirror), matching our allocation. Original tools/chr_ram_size_probe.s and
+.out/chr-size retain evidence. Continue probing instead of changing sizes.
+
+Stallar5000 audio has only seven samples with absolute residual>=5:852597
+(+5),852598(-10),852599(+5),1499398(+7),1763998(-7),1848826(+6),1848827(+8).
+Times19.3333/34.0000/40.0000/41.9235 seconds. Investigate isolated event/
+quantization rounding rather than assuming persistent APU state divergence.
