@@ -337,6 +337,11 @@ impl Bus {
                 0x4000..=0x401f => self.open,
                 _ => self.cart.read(a, self.open),
             };
+        #[cfg(feature="trace")]
+        if a == 0x6000 && self.cart.mapper == 1 && self.cart.ram.len() > 8192 {
+            eprintln!("RAM_READ {} {} {} {} {}", self.cycles, self.ppu.frame,
+                self.ppu.scan, self.ppu.dot, v);
+        }
         self.open = v;
         v
     }

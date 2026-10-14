@@ -49,6 +49,7 @@ pub struct Ppu {
     pub nmi_line: bool,
     suppress: bool,
     skip_render: bool,
+    cart_addr_pending: Option<u16>,
 }
 impl Ppu {
     pub fn new() -> Self {
@@ -95,6 +96,7 @@ impl Ppu {
             nmi_line: false,
             suppress: false,
             skip_render: false,
+            cart_addr_pending: None,
         }
     }
     fn update_nmi(&mut self) {
@@ -132,9 +134,15 @@ impl Ppu {
             _ => self.pal[Self::pi(a)],
         }
     }
-    fn read_background(&mut self, c: &mut Cart, a: u16) -> u8 {
-        if c.mapper == 1 { c.address(a, self.ticks); }
-        c.chr_read(a)
+    fn read_fetch(&mut self, c: &mut Cart, a: u16) -> u8 {
+        if c.mapper != 1 { return self.read_mem(c, a); }
+        let a = a & 0x3fff;
+        self.cart_addr_pending = Some(a);
+        match a {
+            0..=0x1fff => c.chr_read(a),
+            0x2000..=0x3eff => self.nt[c.nt_index(a)],
+            _ => self.pal[Self::pi(a)],
+        }
     }
     fn write_mem(&mut self, c: &mut Cart, a: u16, val: u8) {
         let a = a & 0x3fff;
@@ -455,6 +463,7 @@ impl Ppu {
     }
 
     pub fn tick(&mut self, c: &mut Cart) {
+        if let Some(a) = self.cart_addr_pending.take() { c.address(a, self.ticks); }
         let d = self.dot;
         if self.scan == 261 && d == 338 {
             self.skip_render = self.rendering()
@@ -484,19 +493,19 @@ impl Ppu {
                 match (d - 1) & 7 {
                     0 => {
                         self.load_shift();
-                        self.tile = self.read_mem(c, 0x2000 | (self.v & 0xfff))
+                        self.tile = self.read_fetch(c, 0x2000 | (self.v & 0xfff))
                     }
                     2 => {
                         let a =
                             0x23c0 | (self.v & 0xc00) | ((self.v >> 4) & 0x38) |
                                 ((self.v >> 2) & 7);
-                        let v = self.read_mem(c, a);
+                        let v = self.read_fetch(c, a);
                         self.attr = (v >> (((self.v >> 4) & 4) | (self.v & 2))) & 3
                     }
-                    4 => self.patlo = self.read_background(c,
+                    4 => self.patlo = c.chr_read(
                         ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
                             + ((self.v >> 12) & 7)),
-                    6 => self.pathi = self.read_background(c,
+                    6 => self.pathi = c.chr_read(
                         ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
                             + ((self.v >> 12) & 7) + 8),
                     7 => self.inc_x(),
@@ -515,7 +524,7 @@ impl Ppu {
                 self.v = (self.v & !0x7be0) | (self.t & 0x7be0)
             }
             if (1..=256).contains(&d) && self.scan < 240 { self.evaluate() }
-            if c.mapper == 4 && ((6..=256).contains(&d) || (326..=336).contains(&d))
+            if ((6..=256).contains(&d) || (326..=336).contains(&d))
                 && (d & 7 == 6 || d & 7 == 0)
             {
                 // Background data is fetched on dots 5/7; its address
@@ -524,10 +533,10 @@ impl Ppu {
                 c.address(((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
                     + ((self.v >> 12) & 7), self.ticks);
             }
-            if d == 256 || d == 320 {
+            if c.mapper == 4 && (d == 256 || d == 320) {
                 c.address(0x2000 | (self.v & 0xfff), self.ticks)
             }
-            if c.mapper == 4 && (260..=319).contains(&d) && d & 7 == 4 {
+            if (260..=319).contains(&d) && d & 7 == 4 {
                 let i = ((d - 260) / 8) as usize;
                 c.address(self.sprite_address(i), self.ticks)
             }
@@ -536,10 +545,10 @@ impl Ppu {
                 let i = ((d - 257) / 8) as usize;
                 let p = (d - 257) & 7;
                 match p {
-                    0 | 2 => { self.read_mem(c, 0x2000 | (self.v & 0xfff)); }
+                    0 | 2 => { self.read_fetch(c, 0x2000 | (self.v & 0xfff)); }
                     4 => {
                         let a = self.sprite_address(i);
-                        let lo = self.read_mem(c, a);
+                        let lo = self.read_fetch(c, a);
                         self.next[i] =
                             Sprite {
                                 x: self.secondary[i * 4 + 3],
@@ -553,7 +562,7 @@ impl Ppu {
                     }
                     6 => {
                         let a = self.sprite_address(i) + 8;
-                        let hi = self.read_mem(c, a);
+                        let hi = self.read_fetch(c, a);
                         self.next[i].hi =
                             if self.next[i].attr & 64 != 0 {
                                 hi.reverse_bits()
@@ -564,9 +573,9 @@ impl Ppu {
             }
             if d == 337 {
                 self.load_shift();
-                self.read_mem(c, 0x2000 | (self.v & 0xfff));
+                self.read_fetch(c, 0x2000 | (self.v & 0xfff));
             }
-            if d == 339 { self.read_mem(c, 0x2000 | (self.v & 0xfff)); }
+            if d == 339 { self.read_fetch(c, 0x2000 | (self.v & 0xfff)); }
         }
         if self.scan < 240 && (1..=256).contains(&d) { self.render_pixel() }
         self.ticks += 1;

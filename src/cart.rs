@@ -271,7 +271,7 @@ impl Cart {
         if self.mapper == 1 {
             // SxROM boards reuse the currently selected CHR address lines
             // for PRG ROM/RAM. In 4 KiB mode the PPU chooses the register.
-            if a < 0x2000 { self.chr_upper = a & 0x1000 != 0; }
+            self.chr_upper = a & 0x1000 != 0;
             return;
         }
         if self.mapper != 4 { return }
