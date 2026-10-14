@@ -1188,3 +1188,31 @@ Nes.run_frame stillold last_dma_cycle suspendboth rule; nextwork shouldtry
 finishpendinginstructionunlessOAMactive, possiblyfinishDMCburstinsideOAM
 beforepausing. Compareloop1maskrefs andexistingOAMsuspensionunit; thenfull
 20krealgameimages/counts and30diag asnewframecallbackcanchangeoutputs.
+
+## Accepted frame callback correction (51 units)
+
+The earlier assertion that OAM DMA could pause at the frame boundary was
+incorrect. Original mask probes .out/dmc-oam-frame-wrap/oam58600..59000
+showed reference finishes 1..4 next-frame rows during an overlapping OAM
+transfer. Finishing the pending CPU instruction fixes all five probes;
+publish_next_pixel must also handle ALL visible scanlines, not only row0
+(the last three probes exposed one missing published pixel each).
+
+More decisively, tools/dma_frame_input_probe.py holds A during frame-call2
+and releases before call3. Four OAM transfers at planned59100/59400/59500/
+59550 cross the boundary; LDA4016 immediately afterward reads A=1 in the
+reference. Old callback reads A=0 (all61440 finalpixels wrong); completing
+DMA AND its held CPU instruction matches all four. Original old
+.out/dma-boundary.nes 8call input fixture also remains allframes exact.
+DMC-only looping mask probe all8 cases now exact, including old15pixels
+missing nextrow0. Nes.run_frame now finishes any pending instruction/DMA.
+The OAM unit was corrected to protect completion rather than suspension.
+
+Accepted native .out/run-dma-frame-finish51; wasm required build complete.
+All30diagnostics finalimages ANDcounts exact; maxRMS.025014 peak1.
+All215DMA-sideeffect cases images exact, maxavailableaudiopeak1.
+Full4x5000 variedgameplay: ALL20kframes exact,3668206samples each exact,
+RMS RFK.000738/RHDE.06150/FF.09738/Stallar.16647 peak1 allgames.
+.out/dma-frame51-{games/results.json,diagnostic-comparison.json,sideeffects.json}.
+This incorporates accepted pulse49 and aborted-DMC latch50 as well.
+Next: expand MMC3 CPU-driven A12 clock probes and held-out DMA/APU streams.

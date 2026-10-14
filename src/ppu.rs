@@ -20,6 +20,7 @@ pub struct Ppu {
     nt: [u8; 4096],
     pal: [u8; 32],
     v: u16,
+    pending_v: Option<(u16,u64)>,
     t: u16,
     x: u8,
     w: bool,
@@ -32,6 +33,8 @@ pub struct Ppu {
     athi: u16,
     tile: u8,
     attr: u8,
+    bg_ready: bool,
+    render_just_enabled: bool,
     patlo: u8,
     pathi: u8,
     sprites: [Sprite; 8],
@@ -67,6 +70,7 @@ impl Ppu {
             nt: [0; 4096],
             pal: [0; 32],
             v: 0,
+            pending_v: None,
             t: 0,
             x: 0,
             w: false,
@@ -79,6 +83,8 @@ impl Ppu {
             athi: 0,
             tile: 0,
             attr: 0,
+            bg_ready: false,
+            render_just_enabled: false,
             patlo: 0,
             pathi: 0,
             sprites: [Sprite::default(); 8],
@@ -262,7 +268,7 @@ impl Ppu {
                 self.t = (self.t & !0xc00) | ((val as u16 & 3) << 10);
                 self.update_nmi()
             }
-            1 => self.mask = val,
+            1 => { self.render_just_enabled = !self.rendering() && val & 24 != 0; self.mask = val },
             3 => self.oam_addr = val,
             4 => {
                 if self.rendering_line() {
@@ -288,8 +294,8 @@ impl Ppu {
                     self.t = (self.t & 255) | ((val as u16 & 63) << 8)
                 } else {
                     self.t = (self.t & 0x7f00) | val as u16;
-                    self.v = self.t;
-                    c.address(self.v & 0x3fff, self.ticks)
+                    self.pending_v = Some((self.t,self.ticks+3));
+                    c.address(self.t & 0x3fff, self.ticks)
                 }
                 self.w = !self.w
             }
@@ -298,6 +304,8 @@ impl Ppu {
         }
     }
     fn load_shift(&mut self) {
+        if !self.bg_ready { return }
+        self.bg_ready = false;
         self.lo = (self.lo & 0xff00) | self.patlo as u16;
         self.hi = (self.hi & 0xff00) | self.pathi as u16;
         self.atlo =
@@ -474,7 +482,7 @@ impl Ppu {
         let status = self.status;
         if self.rendering() && self.dot >= 2 {
             self.lo <<= 1;
-            self.hi <<= 1;
+            self.hi = (self.hi << 1) | 1;
             self.atlo <<= 1;
             self.athi <<= 1;
         }
@@ -485,8 +493,12 @@ impl Ppu {
     }
 
     pub fn tick(&mut self, c: &mut Cart) {
+        if let Some((v,at)) = self.pending_v {
+            if self.ticks >= at { self.v = v; self.pending_v = None; }
+        }
         if let Some(a) = self.cart_addr_pending.take() { c.address(a, self.ticks); }
         let d = self.dot;
+        let just_enabled = std::mem::take(&mut self.render_just_enabled);
         if self.scan == 261 && d == 338 {
             self.skip_render = self.rendering()
         }
@@ -506,9 +518,9 @@ impl Ppu {
                 c.address(((self.ctrl as u16 & 16) << 8) +
                             self.tile as u16 * 16 + ((self.v >> 12) & 7), self.ticks)
             }
-            if (2..=257).contains(&d) || (322..=337).contains(&d) {
+            if !just_enabled && ((2..=257).contains(&d) || (322..=337).contains(&d)) {
                 self.lo <<= 1;
-                self.hi <<= 1;
+                self.hi = (self.hi << 1) | 1;
                 self.atlo <<= 1;
                 self.athi <<= 1
             }
@@ -525,9 +537,9 @@ impl Ppu {
                         let v = self.read_fetch(c, a);
                         self.attr = (v >> (((self.v >> 4) & 4) | (self.v & 2))) & 3
                     }
-                    4 => self.patlo = c.chr_read(
+                    4 => { self.bg_ready = true; self.patlo = c.chr_read(
                         ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
-                            + ((self.v >> 12) & 7)),
+                            + ((self.v >> 12) & 7)); },
                     6 => self.pathi = c.chr_read(
                         ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
                             + ((self.v >> 12) & 7) + 8),
@@ -846,5 +858,16 @@ mod tests {
         assert_eq!(ppu.fb[1], 42);
         assert_eq!(ppu.status & 64, 64);
         assert_eq!(ppu.sprites[0].lo, 0);
+
+        // A DMA may finish several visible rows beyond the frame wrap.
+        ppu.scan = 2;
+        ppu.dot = 233;
+        ppu.mask = 0;
+        ppu.v = 0;
+        ppu.pal[0] = 19;
+        let phase = (ppu.frame, ppu.scan, ppu.dot, ppu.ticks);
+        ppu.publish_next_pixel();
+        assert_eq!(ppu.fb[2*256+232], 19);
+        assert_eq!((ppu.frame, ppu.scan, ppu.dot, ppu.ticks), phase);
     }
 }
