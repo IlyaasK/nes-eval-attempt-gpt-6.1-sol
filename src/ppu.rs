@@ -26,7 +26,7 @@ pub struct Ppu {
     read_hold_high:bool,
     read_hold:u8,
     data_reads: std::collections::VecDeque<u64>,
-    data_incs: std::collections::VecDeque<u64>,
+    data_incs: std::collections::VecDeque<(u64,bool)>,
     t: u16,
     x: u8,
     w: bool,
@@ -223,6 +223,12 @@ impl Ppu {
         // evaluation. Clearing secondary OAM can still put $FF on its bus.
         if addr & 3 == 2 { value & 227 } else { value }
     }
+    pub fn begin_cpu_read(&mut self,c:&mut Cart,reg:u16) {
+        if reg&7==7 && self.rendering_line() {
+            let a=self.v&0x3fff;
+            c.address(if a>=0x3f00 {a-0x1000} else {a},self.ticks);
+        }
+    }
     pub fn read_reg(&mut self, c: &mut Cart, reg: u16) -> u8 {
         let open = self.bus_get();
         #[cfg(feature="trace")]
@@ -258,9 +264,9 @@ impl Ppu {
             7 => {
                 let a = self.v & 0x3fff;
                 if self.rendering_line() {
-                    c.address(a,self.ticks);
+                    c.address(if a>=0x3f00 {a-0x1000} else {a},self.ticks);
                     self.data_reads.push_back(self.ticks+3);
-                    self.data_incs.push_back(self.ticks+4);
+                    self.data_incs.push_back((self.ticks+4,a>=0x3f00));
                     return if a>=0x3f00 {
                         let v=(self.pal[Self::pi(a)] & if self.mask&1!=0 {48} else {63}) | (open&192);
                         self.bus_set(v,63); v
@@ -724,12 +730,12 @@ impl Ppu {
             self.read_hold_high=((1..=255).contains(&d)||(321..=331).contains(&d)) && matches!(d&7,4|5);
 
         }
-        while self.data_incs.front().is_some_and(|&at|at<=self.ticks) {
-            self.data_incs.pop_front();
+        while self.data_incs.front().is_some_and(|&(at,_)|at<=self.ticks) {
+            let (_,palette)=self.data_incs.pop_front().unwrap();
             if self.rendering_line() {
                 self.inc_x();
                 self.inc_y();
-                c.address(self.v&0x3fff,self.ticks);
+                if !palette {c.address(self.v&0x3fff,self.ticks);}
             } else { self.inc_v(c); }
         }
         if self.scan < 240 && (1..=256).contains(&d) { self.render_pixel() }

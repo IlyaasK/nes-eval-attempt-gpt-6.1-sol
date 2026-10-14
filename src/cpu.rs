@@ -227,6 +227,11 @@ impl Bus {
         let op = self.request.expect("CPU bus request");
         // Timer/reader requests become visible in this clock before DMA
         // arbitrates the CPU's queued bus operation.
+        if let CycleOp::Read(a)=op {
+            if (0x2000..0x4000).contains(&a) && a&7==7 {
+                self.ppu.begin_cpu_read(&mut self.cart,a);
+            }
+        }
         self.tick();
         let next_cycle = self.cycles;
         // A cancelled reload retains its address only for the current

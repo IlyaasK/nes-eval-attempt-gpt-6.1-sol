@@ -1640,3 +1640,38 @@ inc-delayed+4end,both; .out/run-ppu63-cart-{read,inc,both}. Noadoptuntilpin
 ruleworkedout;pureNROMcontrolledimages unaffectedpins. Requiredartifact62.
 Newaudio256seeds1100..1355 allcounts/imagesexact peak<=2 maxRMS.243975; now
 824randomaudiofixturespass62, all7formerlybadfixed.
+
+MMC3continuousREAD newpintrialsrawREAD+delayedINC4 (`cart-both`) first16IRQ
+edges SLOWREADLOOP47CPU CTRL0 latch8 matches thenwrong. FoundYcollision at
+READ66465(scan60dot252), CPUinc4dot256: mustDOUBLEY(normal+CPU) ratherthan
+skipY. New .out/run-ppu63-cart-both-doubley andsource .out/ppu63-cart-both-
+doubley.rs fixes6morecontrolledREADscrollcases71237..71242 all0pixels; old
+115still0. SLOWCTRL0first35IRQedges nowmatch thennativeoneREAD earlier at
+~76400CPU. SuspectCPUrenderREADvpalette3Fxx mustcartdriveSHADOW2Fxx (internal
+palette doesn'texposeCartA12high), currenttestingshadow READpinvariant.
+36fastREAD IRQ/RMSstilllarge(old62ALSOlarge); doNOTadopt yet. Slowref2ROMs
+.out/mmc3-render-read-slow/c0-l8-n{20,40}.wav; toolsinverse decoder
+/tmp/decode_irq_wave.py firstthresholdIRQedges .edgeidx.npy. Defaultartifact62
+remainsgood. CurrentsourceCPU62/APU62/experimentalPPU63doubleY+pinshadow.
+
+PALpincorrection: renderREADpalette >=3F00 drivesSHADOW (a-1000) atCPUread,
+ANDdelayedCPUinc4mustNOTdriveCartpinsfromnewV whenoriginalREADpalette.
+Queuedincs now(time,paletteBool). ThisfixedSLOWCTRL0first94IRQedges->207;
+fastCTRL0l8n0/l8n2/l1n2 nowRMS~.5-.66 (exactIRQsequence),someotherCTRL0still
+bad(allcounts/imagesexact). SLOWedge207single-sample difference mightdecoder
+inverseIIRdrift, useactualaudio tolocate firstsignificanterror. Newstate
+.out/ppu63-palette-inc-suppressed.rs/native .out/run-ppu63-palette-inc-suppressed.
+Remainingfastl0/l1 mayCPU IRQpoll: IRQcausedbyCPU READ2007addresspin after
+Bus.last_irq snapshotperhapsneedcapturecartIRQduringread(dataPhi2). NowCPU
+TRIAL raw_read updateslast_irq ifPPUREAD7/cart.irq;backup
+.out/cpu62-before-ppu-irq-poll.rs. DoNOTadoptCPUtrialunless36newIRQprobes+
+old30CPUa12+215broadpasses. Artifact62 stable untouched.
+
+CPU raw_read last_irq=True trial FAILED old30CPUa12 (RMS~670peak1024), only
+smallfastnewimprovement. RESTOREDCPU62. NewexperimentalCPU begin-read hook:
+beforeBus.tick ifCPUreadPPU7 callsPpu.begin_cpu_read ->Cart.address(current
+V orpalette shadow) whilevisible/prerender. Existingraw7pin+inc4pin unchanged.
+Hypothesis externalCPUaddressdecodephi1 predrives mapper before CPU IRQpoll,
+withoutchangingPPUdataportphase. Defaultsource includeshook experimental;
+backups .out/{cpu,ppu}63-begin-read-trial.rs, native .out/run-ppu63-begin-read.
+Neededcompare36newIRQ tests beforeadoption;artifact62still.
