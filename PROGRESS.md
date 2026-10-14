@@ -1686,3 +1686,43 @@ RMS.52..67, othercasesremain. Now6variants delayedCARTpin afterINC counter
 GPIOpropagationdelay mayexplainread-inducedIRQpollwithoutCPUhack.
 RawIRQpolltrialold30failed andbeginpredrivenew36worse, neveradoptthoseCPUmods.
 Artifact62good /sourceCPU62APU62/experimentalPPU restoredbestafterbuild.
+
+## Accepted63 PPU/renderREAD artifact nowbuilding
+CPU62/APU62/Cart58 unchanged. PPU bestpinvariant (immediateREADrawV/palette
+shadow + delayedINC4pinsNONPALETTE), bufferfill3fromfetchaddr, vXY4ALWAYS
+includingdoubleY256, fetchLOWlatchBUFhold untilBGLO/HI, dummyNT337/339updates
+heldlowtoVlow, emptySProw0for8AND16. ALL121controlledREADimagesbyteexact,
+65unitsallpass. Final20kvariedgameimages/counts/audiounchangedpeak1,
+30diagnostics allimages/countsexactpeak1,215DMA exactpeak1, old30CPUa12
+shouldremainpeak3 (log .out/mmc3-cpu-a12-final63.log). Old52BGMM3+72SPMM3
+previouslypassed andnewREADonlypins nochange withoutREAD. Bestnew36continuous
+MMC3READIRQ avgRMS3926 vsold62avg5122,5casesexactsequenceRMS<3;manyremaining
+mapperIRQmismatches tofix. Adoptionisprogress,NOTdone;continueonOAMREADbus.
+RequiredWASM63building/smoketesting .out/abi63-{read,ycollision}.log;
+backups .out/{ppu,cpu,apu,cart}63-accepted.rs; native .out/run-ppu63-final.
+AllCPUIRQ-poll/predrive experimentsrejected/restored; incpin1/2/3dotextra
+latency experimentsworsethanbest. NoROMspecificlogic.
+
+## Accepted63 WASM done; OAM64 trial promising
+WASM63built/smoketestedREADgrid t70935 FB-549333786/audio-553626097/2184samples;
+Ycollision t71239 FB-1834053102/sameaudio;44100. Final65units+121controlled
+READimagesallpass,20kvariedgames/30diagnostics/215DMAallimages/countsexact
+peak1. Mixed16old258badframes32794pixelsRMSavg720 ->63 126frames28236pixels
+avg273.82. BestGPIOinc4noextraCartdelay:6pin-delayvariantsallworse;_CPU62
+restored_, allCPUlookahead/predrive rejected. Artifact63/backs63 stable.
+
+NewOAM64purepost-evalbusfields post_eval_valid/n/latch(semantic evaluator/
+OAMADDRunchanged): oddprimaryYwalkn0.. afterwrap, evensecondary[nextslot],
+read_reg4 usespostLatch duringcurrent66..257 ifactualwrapthisline. Resetvalid
+atlineDot1 evenifmaskedoff. FirsttrialevenFF introducedwrongREADs; hardware
+secondary[nextslot] keepsLASTREJECTEDY. Addedunconditionalsecondary[pos]=
+evalLatch onYcomparison beforein_range (copyYevenout-of-range). Thisfixes
+newerrors,4captures badbytes 63:22/19/19/1 ->64:19/16/14/0. AllS3READbytes now
+exact! 16mixedaudioavg273.8 ->224.16;pixelsUNCHANGED28236;215DMAallexactpeak1,
+oldWRITE16pixelresultsunchanged (purebusfix). CurrentPPU64TRIAL saved
+.out/ppu-post-oam-empty-y64-trial.rs/native .out/run-post-oam-empty-y64;
+source includes this. Needsunit+games/diagnostics thenadopt64.
+SecondaryemptyYwritealsofixes257firstemptyfetchYlast63-vsFF. Nopostcursor
+redirectCPU2003/2004 implementedyet;purewalkonly. RemainingOAMreaderrors
+mostlylate-enablemissedDot1/unalignedOAMaddr; oldfailedresume65trialsDO_NOT
+blindlyrestore. Needindependentcontrolledfreshprobesforinitialization.

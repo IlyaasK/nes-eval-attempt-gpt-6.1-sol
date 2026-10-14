@@ -60,6 +60,9 @@ pub struct Ppu {
     eval_pos: usize,
     eval_latch: u8,
     eval_done: bool,
+    post_eval_valid: bool,
+    post_eval_n: u8,
+    post_eval_latch: u8,
     overflow_left: u8,
     pub nmi_line: bool,
     suppress: bool,
@@ -120,6 +123,9 @@ impl Ppu {
             eval_pos: 0,
             eval_latch: 0,
             eval_done: false,
+            post_eval_valid: false,
+            post_eval_n: 0,
+            post_eval_latch: 0,
             overflow_left: 0,
             nmi_line: false,
             suppress: false,
@@ -248,7 +254,9 @@ impl Ppu {
                         255
                     } else if self.rendering_line() && self.dot <= 321
                         && !((self.scan == 261 || self.scan == 0) && self.dot == 0) {
-                        self.eval_latch
+                        if self.post_eval_valid && self.scan<240 && (66..=257).contains(&self.dot) {
+                            self.post_eval_latch
+                        } else {self.eval_latch}
                     } else {
                         self.oam_read(self.oam_addr)
                     };
@@ -392,7 +400,19 @@ impl Ppu {
             }
             return
         }
-        if self.eval_done { return }
+        if self.eval_done {
+            if self.post_eval_valid {
+                // Refresh continues reading primary Y on odd dots and the
+                // unused secondary slot on even dots. It does not advance
+                // the address exposed to CPU writes or sprite selection.
+                if d&1!=0 {self.post_eval_latch=self.oam_read(self.post_eval_n*4);}
+                else {
+                    self.post_eval_latch=self.secondary[self.eval_pos&31];
+                    self.post_eval_n=(self.post_eval_n+1)&63;
+                }
+            }
+            return;
+        }
         if d & 1 != 0 {
             self.eval_latch = self.oam_read(self.eval_n.wrapping_mul(4) | self.eval_m);
             return
@@ -402,9 +422,11 @@ impl Ppu {
         let in_range = y >= self.eval_latch && y - self.eval_latch < height;
         if self.eval_pos < 32 {
             if self.eval_m == 0 {
+                // Y is written before the range test. A rejected sprite
+                // leaves its Y in the next otherwise empty secondary slot.
+                self.secondary[self.eval_pos]=self.eval_latch;
                 if in_range {
                     self.indices[self.eval_pos / 4] = self.eval_n;
-                    self.secondary[self.eval_pos] = self.eval_latch;
                     self.eval_pos += 1;
                     self.eval_m = 1
                 } else { self.eval_n = self.eval_n.wrapping_add(1) }
@@ -438,7 +460,11 @@ impl Ppu {
                 self.eval_n = self.eval_n.wrapping_add(1)
             }
         }
-        if self.eval_n >= 64 { self.eval_n = 0; self.eval_done = true }
+        if self.eval_n >= 64 {
+            self.eval_n=0;self.eval_done=true;
+            self.post_eval_valid=true;self.post_eval_n=0;
+            self.post_eval_latch=self.secondary[self.eval_pos&31];
+        }
         // The evaluator and CPU/DMA share OAMADDR. Forced blanking before
         // evaluation finishes preserves this byte address, so a subsequent
         // DMA can rotate the sprite list if software does not write $2003.
@@ -550,6 +576,7 @@ impl Ppu {
         }
         if let Some(a) = self.cart_addr_pending.take() { c.address(a, self.ticks); }
         let d = self.dot;
+        if d==1 {self.post_eval_valid=false;}
         let just_enabled = std::mem::take(&mut self.render_just_enabled);
         if self.scan == 261 && d == 338 {
             self.skip_render = self.rendering()
@@ -770,6 +797,31 @@ impl Ppu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completed_evaluation_refreshes_primary_y_and_retains_the_last_rejected_y() {
+        let mut rom=vec![0;16+16384];
+        rom[..4].copy_from_slice(b"NES\x1a");rom[4]=1;
+        let mut c=Cart::load(&rom).unwrap();
+        let mut p=Ppu::new();
+        p.scan=100;p.dot=1;p.mask=10;
+        p.oam.fill(255);
+        for n in 0..64 {p.oam[n*4]=200+(n%32) as u8;}
+        while p.dot<193 {p.tick(&mut c);}
+        assert_eq!(p.secondary[0],231);
+        assert_eq!(p.eval_pos,0);
+        assert_eq!(p.oam_addr,0);
+        p.tick(&mut c);
+        assert_eq!(p.read_reg(&mut c,4),200);
+        p.tick(&mut c);
+        assert_eq!(p.read_reg(&mut c,4),231);
+        p.tick(&mut c);
+        assert_eq!(p.read_reg(&mut c,4),201);
+        while p.dot<258 {p.tick(&mut c);}
+        assert_eq!(p.read_reg(&mut c,4),231);
+        p.write_reg(&mut c,1,0,50000);
+        assert_eq!(p.read_reg(&mut c,4),200);
+    }
 
     #[test]
     fn rendering_reads_drive_the_mapper_but_palette_reads_keep_the_shadow_bus() {
