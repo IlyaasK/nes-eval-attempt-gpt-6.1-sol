@@ -436,7 +436,10 @@ impl Ppu {
                     self.eval_pos += 1;
                     self.eval_m=(self.eval_m+1)&3;
                     if self.eval_m==0 {self.eval_n=self.eval_n.wrapping_add(1);}
-                } else { self.eval_n = self.eval_n.wrapping_add(1) }
+                } else {
+                    self.eval_n=self.eval_n.wrapping_add(1);
+                    self.eval_m=0;
+                }
             } else {
                 self.secondary[self.eval_pos] = self.eval_latch;
                 self.eval_pos += 1;
