@@ -210,6 +210,12 @@ impl Ppu {
     }
     pub fn read_reg(&mut self, c: &mut Cart, reg: u16) -> u8 {
         let open = self.bus_get();
+        #[cfg(feature="trace")]
+        if matches!(reg & 7,2|4|7) {
+            eprintln!("PPU_PORT {} {} {} {:04x} {:02x} buf={:02x} oam={} n={} m={} pos={} latch={} mask={}",
+                self.scan,self.dot,reg&7,self.v,open,self.buf,self.oam_addr,
+                self.eval_n,self.eval_m,self.eval_pos,self.eval_latch,self.mask);
+        }
         match reg & 7 {
             2 => {
                 let v = (self.status & 224) | (open & 31);

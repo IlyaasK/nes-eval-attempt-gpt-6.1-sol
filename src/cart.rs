@@ -73,8 +73,9 @@ impl Cart {
                 chr: if cs > 0 {
                     b[offset + ps..offset + ps + cs].to_vec()
                 } else { vec![0;chr_size] },
-                ram: vec![0;if
-                    mapper==1||mapper==4{ram_size.max(8192)}else{ram_size}],
+                // UxROM/CNROM do not decode the cartridge RAM window.
+                // NROM and the MMC boards expose at least an 8 KiB bank.
+                ram: vec![0;match mapper {2|3=>0, _=>ram_size.max(8192)}],
                 chr_ram: cs == 0,
                 mapper,
                 mirror: if mapper == 1 { 2 } else { b[6] & 1 },
@@ -511,13 +512,13 @@ mod tests {
         assert_eq!(c.read(0x6000,0xa5),0xa5);
     }
     #[test]
-    fn nes2_requires_mmc_ram_even_if_none_declared() {
+    fn nes2_ram_boards_expose_a_bank_even_if_none_declared() {
         for mapper in [0, 1, 4] {
             let mut b = image(mapper, 2, 0);
             b[7] = 8;
             let c = Cart::load(&b).unwrap();
-            assert_eq!(c.ram.len(),if mapper==0{0}else{8192});
-            assert_eq!(c.read(0x6000,0xaa),if mapper==0{0xaa}else{0});
+            assert_eq!(c.ram.len(),8192);
+            assert_eq!(c.read(0x6000,0xaa),0);
         }
     }
     #[test]
@@ -542,6 +543,22 @@ mod tests {
         let c = Cart::load(&image(2, 1, 0)).unwrap();
         assert_eq!(c.read(0xfffc, 0), 1);
         assert_eq!(c.read(0xc000, 0), 0);
+    }
+    #[test]
+    fn uxrom_and_cnrom_do_not_decode_ram_even_if_the_header_declares_it() {
+        for mapper in [2,3] {
+            for nes2 in [false,true] {
+                for battery in [0,2] {
+                    let mut b = image(mapper,2,1);
+                    b[6] |= battery;
+                    if nes2 { b[7]=8; b[10]=7; } else { b[8]=2; }
+                    let mut c = Cart::load(&b).unwrap();
+                    c.write(0x6000,42,0);
+                    assert!(c.ram.is_empty());
+                    assert_eq!(c.read(0x6000,96),96);
+                }
+            }
+        }
     }
     #[test]
     fn cnrom_requires_chr_rom() {
