@@ -448,6 +448,7 @@ impl Ppu {
                     self.eval_m = 0;
                     self.eval_n = self.eval_n.wrapping_add(1)
                 }
+                if self.eval_pos&3==0 {self.eval_m=0;}
             }
         } else {
             if self.overflow_left > 0 {

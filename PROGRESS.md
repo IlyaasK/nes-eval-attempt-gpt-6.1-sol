@@ -1774,3 +1774,14 @@ NewpatternedOAMstart18cases address1/2 firstREAD77770..778 patterned+repeat
 unaligned eligible2ndentry distinguishesmresetatcopyfinishvsrejectedY.
 Toolsargs --patterned,--repeat-unaligned,--first-read, dir .out/oam-start-pattern.
 CurrentCPU/APU62unchanged, WASM64stable. No66/67adoptionyet.
+
+67YrejectresetM0 fixesall54start probes, but18patterned+repeat eligible
+secondentry provescopyfinishmustALSOresetM0 (addr1 READ77773ref202 vsnative162:
+refmovesnormalY scan after4copiedbytes insteadcontinuedunalignedsecondTILEY).
+Address2pattern all9alreadymatch. Source68TRIAL forceseval_m0 onceeval_pos&3==0
+aftercopiedremaining3bytes (normalcopy only);Ncarryalreadyoccurredthrough4
+physicalbytes. Needpattern18+mixed16/write16 tests; artifact64unchanged.
+67RGB old17780->17956worse, mixed28236->28398worse though54controlledallpass.
+Current .out/ppu67-before-copy-m-reset.rs backup;66physical skeletongoodbut
+copy-phase lowbyte reset missing. Full-overflowdummy4-bytecopy mayneedM0
+resettoo afteroverflow_left decrements0;separatelymeasure afternormalcopyfixed.
