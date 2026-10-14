@@ -186,6 +186,12 @@ impl Ppu {
         }
         c.address(self.v & 0x3fff, self.ticks)
     }
+    fn oam_read(&self, addr: u8) -> u8 {
+        let value = self.oam[addr as usize];
+        // Primary OAM's unused attribute bits read as zero, including
+        // evaluation. Clearing secondary OAM can still put $FF on its bus.
+        if addr & 3 == 2 { value & 227 } else { value }
+    }
     pub fn read_reg(&mut self, c: &mut Cart, reg: u16) -> u8 {
         let open = self.bus_get();
         match reg & 7 {
@@ -200,14 +206,13 @@ impl Ppu {
             }
             4 => {
                 let v =
-                    if self.rendering_line() && self.dot >= 1 && self.dot <= 64
+                    if self.rendering_line() && self.dot >= 2 && self.dot <= 64
                         {
                         255
                     } else if self.rendering_line() && self.dot <= 321 {
                         self.eval_latch
                     } else {
-                        let v = self.oam[self.oam_addr as usize];
-                        if self.oam_addr & 3 == 2 { v & 227 } else { v }
+                        self.oam_read(self.oam_addr)
                     };
                 self.bus_set(v, 255);
                 v
@@ -316,9 +321,7 @@ impl Ppu {
         }
         if d > 256 || self.eval_done { return }
         if d & 1 != 0 {
-            self.eval_latch =
-                self.oam[(self.eval_n as usize * 4 + self.eval_m as usize) &
-                        255];
+            self.eval_latch = self.oam_read(self.eval_n.wrapping_mul(4) | self.eval_m);
             return
         }
         let height = if self.ctrl & 32 != 0 { 16 } else { 8 };
@@ -479,6 +482,7 @@ impl Ppu {
         }
         if self.scan == 261 && d == 1 { self.status &= 31; self.update_nmi() }
         if self.rendering() && line {
+            if d == 0 { self.eval_latch = self.oam_read(self.oam_addr); }
             // An upper-table background keeps A12 low from the final NT
             // fetch through the next line's first attribute fetch. A dot-0
             // high pulse would erase the qualified MMC3 edge on dot 6.
@@ -610,6 +614,38 @@ impl Ppu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oam_data_follows_primary_clear_and_secondary_fetch_bus_phases() {
+        let mut rom = vec![0; 16 + 16384];
+        rom[..4].copy_from_slice(b"NES\x1a");
+        rom[4] = 1;
+        let mut cart = Cart::load(&rom).unwrap();
+        let mut ppu = Ppu::new();
+        ppu.scan = 61;
+        ppu.dot = 0;
+        ppu.mask = 20;
+        ppu.oam.fill(255);
+        ppu.oam[..8].copy_from_slice(&[60,1,255,40,60,2,1,80]);
+        ppu.oam[128..132].copy_from_slice(&[60,3,2,160]);
+        ppu.tick(&mut cart);
+        assert_eq!(ppu.read_reg(&mut cart,4),60); // Currentdot1, primaryY.
+        ppu.tick(&mut cart);
+        assert_eq!(ppu.read_reg(&mut cart,4),255); // Clear starts atdot1.
+        while ppu.dot < 70 { ppu.tick(&mut cart); }
+        assert_eq!(ppu.read_reg(&mut cart,4),227); // Primaryattr's unusedbits.
+        while ppu.dot < 257 { ppu.tick(&mut cart); }
+        assert_eq!(ppu.secondary[2],227);
+        assert_eq!(ppu.read_reg(&mut cart,4),255); // Finalevalbus beforefetch.
+        for value in [60,1,227,40,40,40,40,40,60,2,1,80,80,80,80,80] {
+            ppu.tick(&mut cart);
+            assert_eq!(ppu.read_reg(&mut cart,4),value);
+        }
+        while ppu.dot < 321 { ppu.tick(&mut cart); }
+        assert_eq!(ppu.read_reg(&mut cart,4),255); // LastsecondaryX atdot320.
+        ppu.tick(&mut cart);
+        assert_eq!(ppu.read_reg(&mut cart,4),60); // PrimaryOAM outsidefetch.
+    }
 
     #[test]
     fn mmc3_background_edge_follows_the_data_fetch_and_retains_the_low_interval() {

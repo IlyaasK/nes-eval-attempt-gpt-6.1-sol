@@ -761,3 +761,31 @@ forenable800 and825forenable802protectsbothabortandnolater-chipfullDMA.
 NativecurrentdefaulttraceOFF. Sourcehasonlyvalidatedchanges, nofixtures
 select-ROMdatabehavior. Nextwork: widerDMCreaderstart/stop/restartand
 IRQ/OAMoverlap timing, OAMevaluationedges, exactgenericFIR/phase/mixer.
+
+## OAMDATA bus during sprite fetch fixed; edge refinements validating
+
+Originaltools/oam_eval_write_probe.py (28cases) provesactive2003writes
+duringevaluation doNOTredirectthe evaluator inreference; nativealready
+matches,so noeval_n/m synchronization change. OAMDATAreadatfetch does
+differ: secondaryY/tile/attribute/X drive257/258/259/260 thenXheld261..264.
+Slot1starts265 etc. CPUreadssee thelastprocessed dot. Previouslynative
+alwaysreturnedprimaryOAM0Y duringfetch. PPU now updates eval_latch from
+secondary onfetch andusesit throughcurrentdot321. All24initialrendered
+readprobesnowexact (.out/oam-render-read/fixed-results.json).
+
+Moreedgeprobes .out/oam-render-edge: currentdot1mustreturnprimaryOAM0Y60
+(lastdot0), notFF; currentdot0stilllastsecondarybusFF. SecondaryclearFF
+startsafterdot1 (currentdot2). Also primaryattrbits2..4readzero during
+evaluation: attr1C->0, FF->E3. Themaskedbyteiscopiedintosecondary,sofetch
+attralsomasked. ClearedemptysecondaryattrstillFF (dot284). PPU now uses
+oam_read helpermaskingprimaryattr, readsprimaryatdot0, andstartsFFread
+shortcutatcurrentdot2. These edge refinementsarebeingcompiled/validated.
+Backup .out/ppu-before-oam-fetch-bus.rs. RequiredwasmstillpreOAMfetchfix
+untilnewvalidation/testsarecomplete.
+
+Audio: newuniform256MIDphase DAC16/64/96/127originaldatasets .out/filter-mid
+look formodel errorsbelow1PCM. Relativegainratiosmatchf64mixerwithin~1ppm,
+noevidenceforcoarselevelquantization. A naive second-moment estimatebiased
+byADCquantizationtail; doNOTchangeglobalmixgainbasedonit. Nextfit direct
+perphase FIR tables withmultipleamplitudes/PCMconstraints, heldoutdata.
+CurrentvalidatedDSP unchanged; SRCgenericcubic spline .2RMS games.
