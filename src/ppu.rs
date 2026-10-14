@@ -573,9 +573,9 @@ impl Ppu {
             }
             if d == 337 {
                 self.load_shift();
-                self.read_fetch(c, 0x2000 | (self.v & 0xfff));
+                self.read_mem(c, 0x2000 | (self.v & 0xfff));
             }
-            if d == 339 { self.read_fetch(c, 0x2000 | (self.v & 0xfff)); }
+            if d == 339 { self.read_mem(c, 0x2000 | (self.v & 0xfff)); }
         }
         if self.scan < 240 && (1..=256).contains(&d) { self.render_pixel() }
         self.ticks += 1;

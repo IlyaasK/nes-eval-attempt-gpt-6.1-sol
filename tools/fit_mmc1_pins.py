@@ -18,7 +18,7 @@ s=pathlib.Path('src/audio_kernel.rs').read_text();s=s[s.index('= [')+3:s.index('
 q=np.floor((ts+8*r)*256)/256-(ts+8*r)+1/512;ids=np.floor(ts).astype(int)[:,None]+np.arange(-19,20)[None,:];x=ids-ts[:,None]-q[:,None]+1.30936
 k=f(np.clip(x,-18,18));k[np.abs(x)>=16]=0;k/=k.sum(axis=1)[:,None];flat=ids.ravel();n=len(pcm)
 r1=np.exp(-2*np.pi*90/44100);r2=np.exp(-2*np.pi*440/44100);alpha=1-np.exp(-2*np.pi*14000/44100);den=np.convolve(np.convolve([1,-r1],[1,-r2]),[1,alpha-1]);num=np.array([1,-1])*r1*r2*alpha
-bootcdf=np.r_[np.load('.out/resampler/power-input.npy')[:16],np.ones(n-16)];boot=lfilter(np.array([1,-2,1])*r1*r2*alpha,den,bootcdf)*(32767*163.67/(24329/45+100))
+startup=pathlib.Path('src/audio.rs').read_text();startup=startup[startup.index('const STARTUP'):];startup=startup[startup.index('= [')+3:startup.index('];')];cdf=np.array([float(v) for v in re.findall(r'[-+]?\d+\.\d+(?:e[-+]?\d+)?',startup)]);bootcdf=np.r_[cdf[:16],np.ones(n-16)];boot=lfilter(np.array([1,-2,1])*r1*r2*alpha,den,bootcdf)*(32767*163.67/(24329/45+100))
 def sound(value):
  levels=32767*163.67/(24329/(45+value)+100);delta=np.diff(levels,prepend=32767*163.67/(24329/45+100))
  stream=np.bincount(flat,weights=(delta[:,None]*k).ravel(),minlength=n)[:n]
@@ -44,7 +44,7 @@ for nt,bg,sp,pre,zero,early in itertools.product(range(3),range(4,8),range(2,5),
      phase=(d-321)%8
      if phase in [nt,(2+nt)%8]:upper=False
      if phase in [(pre-1)%8,(pre+1)%8]:upper=bool(a.ctrl&16)
-    if d in [337+nt,339+nt]:upper=False
+    if d in [337,339]:upper=False
     if early and d in [256,320]:upper=False
    pin[y,d]=upper
  value=np.where(pin[scan,dot],34,17);pred=sound(value);err=pred-pcm;rms=float(np.sqrt(np.mean(err*err)));results.append((rms,nt,bg,sp,pre,zero,early,int(np.max(np.abs(err)))))

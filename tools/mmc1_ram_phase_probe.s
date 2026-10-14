@@ -6,6 +6,9 @@ CONTROL = 28
 .ifndef PPU_CONTROL
 PPU_CONTROL = $10
 .endif
+.ifndef READ_DELAY
+READ_DELAY = 0
+.endif
 .macro serial addr,value
  .repeat 5,bit
  lda #((value >> bit) & 1)
@@ -55,6 +58,9 @@ inner:
  sta $2000
  lda #8
  sta $2001
+ .repeat READ_DELAY
+ nop
+ .endrepeat
 forever:
  lda $6000
  sta $4011
