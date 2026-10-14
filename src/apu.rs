@@ -534,6 +534,7 @@ mod tests {
         while apu.cycle < 14912 { apu.tick(); }
         apu.pulse[1].period = 14;
         apu.pulse[1].timer = 0;
+        apu.pulse[1].seq = 0;
         apu.pulse[1].r[1] = 187;
         apu.tick();
         assert_eq!(apu.pulse[1].period,13);

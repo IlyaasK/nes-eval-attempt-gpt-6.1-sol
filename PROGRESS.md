@@ -1058,3 +1058,35 @@ input ROMbytes unchangedexcept --oam registerwriter extension. OAMpages0/2/
 Full30diagnosticloopdoneafterfirstpipeline butnewwarmdownoneclock wasadded
 since; comparison/fullfreshnativechecks due. Broad4game5000afterrecentguard/
 DMCchanges due; lastbroadafterTriangle fixes had20kimagesexact/audiopeak1.
+
+## Active new stress discrepancies narrowed; pulse-sweep ordering trial
+
+BothOAM+DMCseed109/113discrepancies are IDENTICALwitholdpipeline, so accepted
+DMCfixdidnotregress them. Isolation:109pulse2onlyfailsRMS15.23peak225first13981,
+otherspulse1/tri/noise/DMC-onlyallpeak1. StrictgenericMIXforwardmodel identifies
+firstpulse5off reference567497 vsnative567495 (2CPUlate); standalonepulse2-
+registerDAC-independent replay ALSO fails atsamepoint/RMS, rulingoutDMA.
+Tracep2period14->13fromenablednegativeSweep whilelength0 (r1BB); Framehalf
+cancoincide withtimerreload. CurrentPulse timersAFTERhalf wouldloadnew13;
+referencewantold14loadedBEFORE sweep, givingoneAPUclock(2CPU)later edge.
+TrialmovingPulse0/1odd timersahead offrame clocks (Trianglealreadybefore).
+New49thunit assertsoldperiod14 reload andnewperiod13 aftercoincidenthalf.
+Fixtureunitinitialseqneededexplicitreset0 (defaultphasealreadyadvanced);
+fixedfixture; compilation/validationpending. .out/apu-before-pulse-sweep-order.rs
+isacceptedAPUbackupbeforethistrial. WASM stillaccepted48-statebeforePulseorder.
+
+Newminimaloriginalpulse-sweep-edge firsthalf14935 alignsperiod14 timer:
+write4017at18, p2enable30, control40, sweepBB46, lowperiod14at54, high060.
+OldRMS91.47peak201firstPCM362. RefWAV .out/pulse-sweep-edge/edge.wav.
+Needtestneworderingagainstitandoriginal109 plus48oldAPUstreams beforeadopt.
+
+Seed113DMC-onlystillfailsRMS4.408peak292first19085. StrictgenericMIXmodel
+localreferenceDAC58 event774655 vsnative774654 (oneCPUdelay); previousDAC69
+762639 and8zerobits863-equivalent documentedtrace. LatestloopingONEBYTE
+sample en762628, GET762634, DAC69at762639, stop762652 (bits3,timer38,buffer0,
+left1,rate6F). LongidleuntilDAC58at774654, reference+1clockindicatesanextra
+haltbetweenpriorDAC andnext one. Notratewrite: oldperiod54new320write774733
+occursAFTERfirstdiscrepancy. Testingnormalizedinitialen638,DAC646planned,
+stop659planned(actual662), marker1059planned withloop/nonloop length1/17,
+severalstopoffsets; generatorfirststop650impossible4clockdifferent-valuewrite
+fixed655+. Currentloop-stopjob90300 maycompleted; inspectresults.
