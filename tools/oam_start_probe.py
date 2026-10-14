@@ -1,6 +1,6 @@
 """Original OAM address/enable probe with full-byte read capture support."""
 import argparse,pathlib,subprocess
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('prefix');p.add_argument('--visual',action='store_true');p.add_argument('--visual-tile',type=int,default=162);p.add_argument('--eligible-next',action='store_true');p.add_argument('--all-eligible',action='store_true');p.add_argument('--eight-eligible',action='store_true');p.add_argument('--patterned',action='store_true');p.add_argument('--repeat-unaligned',action='store_true');p.add_argument('--first-read',type=int);p.add_argument('--read-reg',type=lambda v:int(v,16),default=0x2004);p.add_argument('--address',type=int,default=1);p.add_argument('--write-cycle',type=int,default=77768);p.add_argument('--enable-cycle',type=int,default=40008);a=p.parse_args();q=pathlib.Path(a.prefix);q.parent.mkdir(parents=True,exist_ok=True)
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('prefix');p.add_argument('--visual',action='store_true');p.add_argument('--visual-tile',type=int,default=162);p.add_argument('--eligible-next',action='store_true');p.add_argument('--all-eligible',action='store_true');p.add_argument('--eight-eligible',action='store_true');p.add_argument('--patterned',action='store_true');p.add_argument('--repeat-unaligned',action='store_true');p.add_argument('--first-read',type=int);p.add_argument('--read-reg',type=lambda v:int(v,16),default=0x2004);p.add_argument('--data-cycle',type=int);p.add_argument('--data-value',type=int,default=85);p.add_argument('--address',type=int,default=1);p.add_argument('--write-cycle',type=int,default=77768);p.add_argument('--enable-cycle',type=int,default=40008);a=p.parse_args();q=pathlib.Path(a.prefix);q.parent.mkdir(parents=True,exist_ok=True)
 rows=[(33000,0x2000,0),(33008,0x2001,0),(33016,0x2003,0)];oam=[255]*256;oam[:8]=[200,160,170,16,161,200,200,160]
 if a.eligible_next:oam[4]=160
 if a.patterned:
@@ -15,6 +15,7 @@ if a.visual:
  rows.extend([(36400,0x2006,0),(36408,0x2006,0),(36416,0x2005,0),(36424,0x2005,0)])
 rows.extend([(40000,0x2000,0),(40008,0x2001,30 if a.visual else 8)])
 if a.enable_cycle!=40008:rows.extend([(77730,0x2001,0),(a.enable_cycle,0x2001,30 if a.visual else 8)])
+if a.data_cycle is not None:rows.append((a.data_cycle,0x2004,a.data_value))
 rows.append((a.write_cycle,0x2003,a.address));first=a.first_read if a.first_read is not None else max(77770,a.write_cycle+4,a.enable_cycle+4)
 # A one-cycle gap cannot be represented by the timing replay's delay code.
 last=max(a.write_cycle,a.enable_cycle)

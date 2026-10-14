@@ -64,6 +64,7 @@ pub struct Ppu {
     secondary_cpu: [u8; 32],
     indices: [u8; 8],
     eval_n: u8,
+    eval_start_addr: u8,
     eval_m: u8,
     eval_pos: usize,
     eval_latch: u8,
@@ -134,6 +135,7 @@ impl Ppu {
             secondary_cpu: [255; 32],
             indices: [255; 8],
             eval_n: 0,
+            eval_start_addr: 0,
             eval_m: 0,
             eval_pos: 0,
             eval_latch: 0,
@@ -398,10 +400,11 @@ impl Ppu {
         self.athi =
             (self.athi & 0xff00) | if self.attr & 2 != 0 { 255 } else { 0 }
     }
-    fn initialize_evaluation(&mut self) {
+    fn initialize_evaluation(&mut self) {self.initialize_evaluation_at(self.oam_addr);}
+    fn initialize_evaluation_at(&mut self, addr: u8) {
         self.eval_pos=0;
-        self.eval_n=self.oam_addr>>2;
-        self.eval_m=self.oam_addr&3;
+        self.eval_n=addr>>2;
+        self.eval_m=addr&3;
         self.eval_done=false;
         self.overflow_left=0;
         self.indices=[255;8];
@@ -467,7 +470,7 @@ impl Ppu {
     }
     fn evaluate_core(&mut self) {
         let d=self.dot;
-        if d==1 {self.initialize_evaluation();}
+        if d==1 {self.initialize_evaluation_at(self.eval_start_addr);}
         if d <= 64 {
             if d & 1 == 0 {
                 self.secondary[(d / 2 - 1) as usize] = 255;
@@ -685,6 +688,7 @@ impl Ppu {
         }
         if let Some(a) = self.cart_addr_pending.take() { c.address(a, self.ticks); }
         let d = self.dot;
+        if d==0 {self.eval_start_addr=self.oam_addr;}
         if d==257 {self.sprite_fetched=false;}
         if d==1 {
             self.eval_line_started=self.render_history&1!=0;
