@@ -696,7 +696,6 @@ impl Ppu {
                             ((self.tile as u16 * 16) & 0xf00) | self.bg_fetch_low as u16;
                         self.fetch_addr = a;
                         self.pathi = c.chr_read(a);
-                        self.inc_x();
                     }
                     _ => unreachable!()
                 }
@@ -778,6 +777,12 @@ impl Ppu {
                 if self.read_hold_active {self.read_hold=self.v as u8;}
                 self.read_mem(c, 0x2000 | (self.v & 0xfff));
             }
+        }
+        // Horizontal carry is enabled by the preceding rendering dot,
+        // including a mask disable on the data-fetch clock itself.
+        if line && self.render_history & 1 != 0 && d & 7 == 0
+            && ((8..=256).contains(&d) || (328..=336).contains(&d)) {
+            self.inc_x();
         }
         if line && self.render_history & 2 != 0 {
             if d == 256 { self.inc_y() }
@@ -867,6 +872,38 @@ mod tests {
         assert_eq!(p.read_reg(&mut c,4),231);
         p.write_reg(&mut c,1,0,50000);
         assert_eq!(p.read_reg(&mut c,4),200);
+    }
+
+    #[test]
+    fn horizontal_increment_enable_uses_the_previous_rendering_dot() {
+        let mut rom=vec![0;16+16384];
+        rom[..4].copy_from_slice(b"NES\x1a");rom[4]=1;
+        let mut c=Cart::load(&rom).unwrap();
+        for was_rendering in [false,true] {
+            let mut p=Ppu::new();
+            p.scan=100;p.dot=8;p.v=0x3f07;
+            p.mask=if was_rendering {10} else {0};
+            p.render_history=if was_rendering {15} else {0};
+            p.write_reg(&mut c,1,if was_rendering {0} else {10},40000);
+            p.tick(&mut c);
+            assert_eq!(p.v,if was_rendering {0x3f08} else {0x3f07});
+        }
+    }
+
+    #[test]
+    fn skipping_sprite_fetch_does_not_reload_a_depleted_previous_line() {
+        let mut rom=vec![0;16+16384];
+        rom[..4].copy_from_slice(b"NES\x1a");rom[4]=1;
+        let mut c=Cart::load(&rom).unwrap();
+        let mut p=Ppu::new();
+        p.scan=100;p.dot=250;p.mask=0;p.count=1;p.next_count=1;
+        p.sprites[0]=Sprite {x:0,lo:0,hi:0,attr:0,index:0};
+        p.next[0]=Sprite {x:100,lo:128,hi:0,attr:0,index:0};
+        p.pal[17]=21;
+        while p.scan==100 || p.dot<1 {p.tick(&mut c);}
+        p.write_reg(&mut c,1,20,40000);
+        while p.dot<112 {p.tick(&mut c);}
+        assert!(p.fb[101*256..101*256+110].iter().all(|&v|v==0));
     }
 
     #[test]

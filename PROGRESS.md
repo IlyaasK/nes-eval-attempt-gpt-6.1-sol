@@ -1862,3 +1862,30 @@ scroll tests. WASM86rebuiltandABIpalette4calls/S3input25validated.
 Saved .out/{ppu,cpu}86-accepted.rs. CPU/APUaccepted62unchanged.
 OAMstarttoolnewall-eligible/eight-eligible;phaseproberead --prime-address now.
 ContinueMMC3continuousreadIRQ/lateenableOAM/PPUreadS1last8mismatches.
+
+## Accepted89: missed sprite fetch and PPUMASK horizontal carry (17:35 UTC)
+86S3READallcorrectbut79pixels4badrows. F5line11=27ghostspritepixels after
+MASKoffpreviousline10dot238 /on11dot42: SPRfetch257..320missed, oldlineend
+ALWAYSreloadedstalenextSPR. New88sprite_fetchedflag resets257outsideMASK;
+setSPpattern4/6; copyNextSPR+countat340ONLYifanyfetchcompleted. Preserve
+alreadyshifted/depletedcurrentSPRotherwise. Fixesentire27pixelrowS3, rest
+3rows50pixels; oldWRITE17776->17688, mixed28163->28090. Captured4seeds/audio
+unchanged;all20kgames/30diag/215DMAexactpeak1;69unitsgood.
+LargestS6F15blankpal pair32vs56=13824pixels, laterframesalsoNT/palwrong.
+MASKoff437903Line184Dot184 skipsnormalXINCbecausecurrentrenderfalse; ref
+countsXINCderivedPREVIOUSdot. Controlled originalpalette0..31 READafter
+MASKoff96phases(3scanlinealignments) has12wrongbytesold86, all96new89EXACT.
+MOVE BGnormalINCXoutsidecurrentrender gate: usesrender_history&1 atd8..256
+and328..336. NONPALCPUread+4stilldoubleincX/Ywhencoincident normal.
+New96enablingphaseprobes alsoALLexact89. Total192MASKphasecaptures exact.
+New89 mixed16badpixels28090->10306 /avgAudio142.16->123.13; oldWRITE17688
+->14064. S6total16677->317; S4 91->24; S5 354->61 andaudiopeak1 now.
+S3still50pix3rows/allcapturedREAD+audiopeak1 exact. All20kgameframes+audio
+peak1 exact;30diagimages/countsexactmaxRMS.025peak1;215DMAimages/countsexact
+peak1. 71unitsPASS incloriginalmissedSPRdepletedcounter/horizontalgatephase.
+RequiredWASM89rebuilt+ABI22S6changingkeys+25S3changingkeys/drainvalidated.
+Saved .out/ppu89-accepted.rs (CPU/APU62unchanged). MMC3continuousREAD36
+unchangedbest5exact/mean3926; stillpendingIRQbusphaseproblem.
+Refs/probes .out/ppu-disable-inc87 /ppu-enable-inc90; scripts /tmp/ppu_*inc*
+Sourcecurrentlyaccepted89. NewlateenableOAMinitprobes82stillpendingmissing
+2start/5Dot1; doNOTadopt73lateinitwithoutfixing180extraRGBerrors.
