@@ -293,6 +293,12 @@ impl Apu {
     }
     pub fn write(&mut self, a: u16, v: u8) {
         #[cfg(feature="trace")]
+        if (0x4000..=0x4007).contains(&a) {
+            let p = &self.pulse[((a-0x4000)/4) as usize];
+            eprintln!("PULSE_STATE {} {:04x} {} period={} timer={} seq={} regs={:?} length={} div={} reload={}",
+                self.cycle,a,v,p.period,p.timer,p.seq,p.r,p.length,p.sweep_div,p.sweep_reload);
+        }
+        #[cfg(feature="trace")]
         if a == 0x4010 || a == 0x4015 {
             eprintln!("DMC_STATE {} {:04x} {} rate={} timer={} bits={} silent={} shift={} buffer={:?} left={}",
                 self.cycle,a,v,self.dmc_r[0],self.dmc_timer,self.dmc_bits,

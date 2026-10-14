@@ -1029,3 +1029,32 @@ pass. WASM remainsacceptedCart9/APUpriorpipeline. Backups
 .out/run-dmc-load-boundary-trial; latestsourcewarmdowncorrected beingbuilt.
 Trace-onlyDMC_STATE retainedforfutureinvestigation. Currentrealgame/full
 30diagCart9 regressionscompleted, comparison stilldue. NoROMspecificdetection.
+
+## DMC load/output boundary pipeline validated (accepted)
+
+AddingfullDMC haltcooldown onGET+1 makesseed10 RMS991.8trial ->.16514peak1,
+countsexact. All16DMC+allchannel streams passRMS<=.2696peak1/2. All20FFlate-
+startcases nowpeak1maxRMS.049. New80A5/5A/3C/C3fingerprintprobes, rates0/7/
+14/15, length1or17, loopingorone-shot, enableboundary-9/-7/-5/-3/-1: all
+peak1maxRMS.1047. tools/dmc_load_boundary_probe.py. Thisprovesloopingone-byte
+continueslatehandoff unlikefinishedonebyte. All215retainedDMC/PPU/controller
+side-effect finalimages exactagain, maxavailableaudiopeak1.
+ tools/dma_probe_regression.py ->.out/dmc-boundary-dma-regression.json.
+
+Currentgenericpipelineaccepted: byteclocktag forrequests evenalreadyempty;
+lostreload whenbyteclockGET+1 (canretryatnextpacket); one-clock-lateDMAdata
+entersshifter onlycontinuingreader, requestsnextprefetch; noDMC haltatGET+1
+allowsoneCPUclock thennextGET-phasehalt (6stalls total). Oldinitial47unit
+extendedCPUstallcounts3/6/3/3; new48thAPUunittestsfinalbytevscontinuing/loop
+one-byte atinitialpacket809. 48units+ABI/requiredWASMbuildrunning/completed
+(checkjob81475). AllsourceDMCchangesnowaccepted. SourcecontainsnoROMdetection.
+
+New16DMC+OAM+allchannelstream seeds100..115:14matchRMS<.25peak1/2, seed109
+RMS14.65peak207firstPCM13981, seed113RMS22.20peak815first19085. Investigate
+whetherpriorpipelinealreadyfailsbeforechanginganything; oldbaselinebinary
+.out/run-frame-clock-overlap, current .out/run-dmc-boundary-warmdown. Original
+input ROMbytes unchangedexcept --oam registerwriter extension. OAMpages0/2/
+20/40/80/C0/FF varied, DMAstallsallowedinactualCPUpgm (plannedtimesnotactual).
+Full30diagnosticloopdoneafterfirstpipeline butnewwarmdownoneclock wasadded
+since; comparison/fullfreshnativechecks due. Broad4game5000afterrecentguard/
+DMCchanges due; lastbroadafterTriangle fixes had20kimagesexact/audiopeak1.
