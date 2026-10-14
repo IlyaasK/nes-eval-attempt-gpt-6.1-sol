@@ -1949,3 +1949,35 @@ Remainingvideo mixed10306pixels/write14064;audio mixedmean119.46; remaining
 OAMREADS2first21706096vs98 mayOAMDATA renderwrites incrementinternalN vsCPU
 addressonly. Next controlledrenderWRITE4phaseprobe. MMC3IRQ36still29bad
 streams(mean3420); truecycleaccuracy notachieved. Continue.
+
+## Accepted110 and pending OAM corruption investigation (2026-10-14 19:43 UTC)
+109delayedrenderWRITE4INC+1 fixedoneDot1casebutBROKEendSPfetch320, rejected.
+New16OAMADDR3writeONexactDot1 probes proveaddresswritesignoredforinitial
+n/mtoo. Correct110snapshoteval_start_addr atDot0; initializeatDot1fromsnapshot;
+lateCPUbus65stillusesliveADDR. All22WRITE4phase+16Dot1ADDR3+82olderOAMstart
+capturesEXACT. Mixedvideo10306->10300pixels, oldwrite14064->14044; audio
+unchanged119.46; 75unitsPASS inclsnapshotbefore3/4access;20kgameframes/audio
+peak1exact;30diagimages/countsexactmaxRMS.025peak1;215DMAexactpeak1.
+WASM110rebuilt/ABI5Dot1capturechecked (.out/abi110-oam-dot1.log).
+Saved .out/ppu110-accepted.rs; currentCPU62/APU62/Cart107/PPU110.
+Current extraOAM_WRITE logging iscfg(trace)only,noruntimebehaviorchange.
+
+RemainingS2READ217060currentLine75Dot215 native96ref98 tracedtoextraeligible
+sprite. FirstOAMdump112ONLYlast8bytesmatched; full256dump116 provesReference
+row152..159 copiedfromrow0..7: ref[74,184,67,103,146,200,194,31] vsnative
+[81,61,131,224,126,120,193,140] (CPUattrs masked). ThismakesSPR38Y74eligible,
+4spritesinsteadnative3, delaysreferenceeval6dots soRefREAD98=previousY62
+insteadnativepostdoneY63=96. Controlled30tail-count/36Y+offset/30mask probes
+ALLexact; exact256NATIVE-RAMfixture115all7phasecapturesexact too, soactual
+RAM corruption/historycausal, notlastsprite-Yalgorithm. No speculativeRAM
+copyfixadopted. FullRAMref .out/oam-ram-full116/results.json, native-state
+fixture .out/s2-oam-before217060.json; scripts /tmp/oam_ram_full116.py and
+/tmp/oam_exact_state115.py. Sourceprefix captured .out/s2-oam110-trace.stderr.
+Ablate117dummy4011replacements at95202(ADDR157),165491(DATA4),166085(CTRL24),
+166116(MASK62),166227(DATA22) all STILLcopyrow152/READ98, NOTcausal. Results
+.out/oam-ablate117-{timestamp}/results.json. Needearlier/lateroperations,
+possibleREAD4/ADDR3corruption orrefreshcoupling. Full dump itself maycause
+sideeffects butoriginalREAD mismatch beforedump showsrealextraSPR selection.
+Tools/oam_start_probe newdata-cycle/data-value/read-reg/mask/ctrl/oam-file/
+eligible-count/offset/last-y flags buildoriginalcontrolledcases.
+Tasknotcomplete; keepimproving. NoAgentdelegation/nointernetused.
