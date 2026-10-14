@@ -101,7 +101,7 @@ impl Cart {
         if a < 0x6000 { return open }
         if a < 0x8000 {
             return if !self.ram.is_empty() && self.ram_enable &&
-                        (self.mapper != 1 || self.prgb & 16 == 0) {
+                        self.mmc1_ram_enabled() {
                     self.ram[self.ram_index(a)]
                 } else { open }
         }
@@ -118,7 +118,9 @@ impl Cart {
                 1 => {
                     let n16 = (n / 2).min(16);
                     let outer =
-                        if n >= 64 { (self.mmc1_chr() as usize & 16) * 2 } else { 0 };
+                        if n >= 64 && self.chr.len() == 8192 {
+                            (self.mmc1_chr() as usize & 16) * 2
+                        } else { 0 };
                     let s = slot / 2;
                     let b =
                         match (self.control >> 2) & 3 {
@@ -146,7 +148,7 @@ impl Cart {
         if a < 0x6000 { return }
         if a < 0x8000 {
             if !self.ram.is_empty() && self.ram_enable && !self.ram_protect &&
-                    (self.mapper != 1 || self.prgb & 16 == 0) {
+                    self.mmc1_ram_enabled() {
                 let i = self.ram_index(a);
                 self.ram[i] = v
             }
@@ -203,13 +205,20 @@ impl Cart {
     fn mmc1_chr(&self) -> u8 {
         if self.control & 16 != 0 && self.chr_upper { self.chr1 } else { self.chr0 }
     }
+    fn mmc1_ram_enabled(&self) -> bool {
+        if self.mapper != 1 { return true; }
+        let snrom_disabled = self.chr_ram && self.chr.len() == 8192
+            && self.prg.len() <= 262144 && self.ram.len() == 8192
+            && self.mmc1_chr() & 16 != 0;
+        self.prgb & 16 == 0 && !snrom_disabled
+    }
     fn ram_index(&self, a: u16) -> usize {
         let bank =
-            if self.mapper == 1 {
+            if self.mapper == 1 && self.chr.len() == 8192 {
                 if self.ram.len() >= 32768 {
-                    (self.chr0 as usize >> 2) & 3
+                    (self.mmc1_chr() as usize >> 2) & 3
                 } else if self.ram.len() >= 16384 {
-                    (self.chr0 as usize >> 3) & 1
+                    (self.mmc1_chr() as usize >> 3) & 1
                 } else { 0 }
             } else { 0 };
         (bank * 8192 + (a as usize - 0x6000)) % self.ram.len()
@@ -262,7 +271,7 @@ impl Cart {
         if self.mapper == 1 {
             // SxROM boards reuse the currently selected CHR address lines
             // for PRG ROM/RAM. In 4 KiB mode the PPU chooses the register.
-            self.chr_upper = a & 0x1000 != 0;
+            if a < 0x2000 { self.chr_upper = a & 0x1000 != 0; }
             return;
         }
         if self.mapper != 4 { return }
@@ -360,6 +369,61 @@ mod tests {
         serial(&mut c, 0xe000, 3, &mut cycle);
         assert_eq!(c.read(0x8000,0),38);
         assert_eq!(c.read(0xc000,0),62);
+    }
+    #[test]
+    fn mmc1_outer_and_ram_banks_follow_the_ppu_in_four_kib_mode() {
+        let mut rom = image(1, 32, 0);
+        rom[8] = 4;
+        let mut c = Cart::load(&rom).unwrap();
+        let mut cycle = 0;
+        serial(&mut c, 0x8000, 28, &mut cycle);
+        serial(&mut c, 0xa000, 4, &mut cycle);
+        serial(&mut c, 0xc000, 28, &mut cycle);
+        serial(&mut c, 0xe000, 2, &mut cycle);
+        c.address(0, 0);
+        c.write(0x6000, 11, cycle);
+        assert_eq!(c.read(0x8000, 0), 4);
+        c.address(0x1000, 1);
+        c.write(0x6000, 22, cycle);
+        assert_eq!(c.read(0x8000, 0), 36);
+        assert_eq!(c.read(0x6000, 0), 22);
+        c.address(0, 2);
+        assert_eq!(c.read(0x6000, 0), 11);
+        serial(&mut c, 0x8000, 12, &mut cycle);
+        c.address(0x1000, 3);
+        assert_eq!(c.read(0x8000, 0), 4);
+        assert_eq!(c.read(0x6000, 0), 11);
+    }
+    #[test]
+    fn snrom_chr_ram_disable_preserves_data_and_returns_open_bus() {
+        let mut c = Cart::load(&image(1, 4, 0)).unwrap();
+        let mut cycle = 0;
+        c.write(0x6000, 37, cycle);
+        serial(&mut c, 0x8000, 28, &mut cycle);
+        serial(&mut c, 0xc000, 16, &mut cycle);
+        c.address(0x1000, 0);
+        assert_eq!(c.read(0x6000, 0x60), 0x60);
+        c.write(0x6000, 99, cycle);
+        c.address(0, 1);
+        assert_eq!(c.read(0x6000, 0x60), 37);
+
+        // The reference does not apply this extra enable to CHR ROM boards.
+        let mut c = Cart::load(&image(1, 4, 1)).unwrap();
+        c.write(0x6000, 37, cycle);
+        serial(&mut c, 0xa000, 16, &mut cycle);
+        assert_eq!(c.read(0x6000, 0x60), 37);
+    }
+    #[test]
+    fn mmc1_expansion_lines_are_not_used_with_larger_chr_rom() {
+        let mut rom = image(1, 32, 8);
+        rom[8] = 2;
+        let mut c = Cart::load(&rom).unwrap();
+        let mut cycle = 0;
+        c.write(0x6000, 37, cycle);
+        serial(&mut c, 0xa000, 24, &mut cycle);
+        serial(&mut c, 0xe000, 2, &mut cycle);
+        assert_eq!(c.read(0x8000, 0), 4);
+        assert_eq!(c.read(0x6000, 0), 37);
     }
     #[test]
     fn mmc3_prg_swap_chr_inversion_and_protected_ram() {

@@ -47,7 +47,9 @@ inner:
  sta $2006
  lda #0
  sta $2006
+.ifndef NO_PPU_READ
  lda $2007
+.endif
 .ifdef RAM_TEST
  lda #37
  sta $6000

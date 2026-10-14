@@ -132,6 +132,10 @@ impl Ppu {
             _ => self.pal[Self::pi(a)],
         }
     }
+    fn read_background(&mut self, c: &mut Cart, a: u16) -> u8 {
+        if c.mapper == 1 { c.address(a, self.ticks); }
+        c.chr_read(a)
+    }
     fn write_mem(&mut self, c: &mut Cart, a: u16, val: u8) {
         let a = a & 0x3fff;
         c.address(a, self.ticks);
@@ -489,10 +493,10 @@ impl Ppu {
                         let v = self.read_mem(c, a);
                         self.attr = (v >> (((self.v >> 4) & 4) | (self.v & 2))) & 3
                     }
-                    4 => self.patlo = c.chr_read(
+                    4 => self.patlo = self.read_background(c,
                         ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
                             + ((self.v >> 12) & 7)),
-                    6 => self.pathi = c.chr_read(
+                    6 => self.pathi = self.read_background(c,
                         ((self.ctrl as u16 & 16) << 8) + self.tile as u16 * 16
                             + ((self.v >> 12) & 7) + 8),
                     7 => self.inc_x(),
@@ -511,7 +515,7 @@ impl Ppu {
                 self.v = (self.v & !0x7be0) | (self.t & 0x7be0)
             }
             if (1..=256).contains(&d) && self.scan < 240 { self.evaluate() }
-            if ((6..=256).contains(&d) || (326..=336).contains(&d))
+            if c.mapper == 4 && ((6..=256).contains(&d) || (326..=336).contains(&d))
                 && (d & 7 == 6 || d & 7 == 0)
             {
                 // Background data is fetched on dots 5/7; its address
@@ -523,7 +527,7 @@ impl Ppu {
             if d == 256 || d == 320 {
                 c.address(0x2000 | (self.v & 0xfff), self.ticks)
             }
-            if (260..=319).contains(&d) && d & 7 == 4 {
+            if c.mapper == 4 && (260..=319).contains(&d) && d & 7 == 4 {
                 let i = ((d - 260) / 8) as usize;
                 c.address(self.sprite_address(i), self.ticks)
             }
