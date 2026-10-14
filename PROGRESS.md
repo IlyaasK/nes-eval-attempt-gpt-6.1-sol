@@ -1407,3 +1407,31 @@ Saved .out/ppu-range-trial.rs / run-sprite-range-trial. SourcePPU RESTORED54
 whileDMA56isolated. Furtherhighaddress probe CHR[9]=0[25]=FF atswitch263 tests
 whetherHIaddress also cachedfromLO, resultsjob19276/.out/sprite-high-address.
 PPUDATAphase16gridfreshpatternedROM ALLexact (noincrementdelayneeded).
+
+## Current56+57 validatedtargeted, broad pending (WASM still55)
+
+CPU56 FULLnormalDMC-on-abortwhileOAM model ALL20newcases all8frames exact
+andaudiopeak1,57unitincludesupdated56GET812/currentOAM+2/noextra nextDMA.
+184old/freshrandomstreams ALLcounts/availableimagesmatch RMSmax.269522peak2;
+215sideeffects allimagesexact maxpeak1. SourceCPU56 nowstronglyvalidated.
+
+PPU57 spritefetch latches ADDRESS AND YRANGE onearlypin dot260(i0), thenLO
+261andHI263usecachedaddress/range. Justclippingbothplanesfromfreshheight
+failedswitch263; CHR[9]=0[25]=FF provesHIusestoredLOWaddress+8. 19CPUphase
+probes onlines161/162/163 (differentPPUalignment) dropsize16->8 at252..270
+ALLimagesexact, includeswrite261afteraddress260. 6table0<->1switchprobes
+withdifferentbankhighbytes ALLexact too. Savedref .out/sprite-fetch-grid,
+.out/sprite-bank-switch. CurrentPpu has sprite_fetch_addr[8],valid[8] arrays.
+Actualfullspritepixelunit caches260, flipsCTRL261 thenrenders8nextlinepixels:
+validold16 staysSP3, invalidold8 staystransparent; ALL57unitspass.
+16randomPPUstreams allimproved vsaccepted54, stillmanyremainingdifferences;
+latest .out/ppu-random/spritefetchlatch-results.json. Newtools/sprite_control_probe.py
+createsoriginalfullypatterned ROMs, tools/ppu_register_phase_probe.py nowdata
+mode too. Dataphase16cases70949..64 allmatchaccepted54(noVincrementdelayneeded).
+
+Native .out/run-sprite-fetch-latch-trial includesCPU56+PPU57. 4x5000gameplay
+and30diagnostics currentlyrunning .out/sprite-fetch57-{games,diagnostics}.log.
+RequireMM3switch48/staticmarkercheckthenadopt57/buildWASM ifbroadpasses.
+Currentdefaultnative57(nontrace), requiredwasm55. CPU55/PPU54acceptedbackups
+.out/cpu55-accepted.rs,.out/ppu54-accepted.rs. FailedparallelCPUtrialsaved
+.out/cpu-abort-parallel-get-trial.rs; doNOTrestore/adopt it.

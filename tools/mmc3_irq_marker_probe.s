@@ -10,6 +10,9 @@ CTRL = $08
 .ifndef LATCH
 LATCH = 8
 .endif
+.ifndef SWITCH_BIT
+SWITCH_BIT = $10
+.endif
 reset:
  sei
  lda #$40
@@ -69,12 +72,12 @@ bottom_oam:
 .endif
 forever:
 .ifdef SWITCH_CTRL
- lda #(CTRL & $ef)
+ lda #(CTRL & ($ff ^ SWITCH_BIT))
  sta $2000
  .repeat SWITCH_CTRL
  nop
  .endrepeat
- lda #(CTRL | $10)
+ lda #(CTRL | SWITCH_BIT)
  sta $2000
  jmp forever
 .else

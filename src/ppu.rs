@@ -45,6 +45,8 @@ pub struct Ppu {
     next: [Sprite; 8],
     count: usize,
     next_count: usize,
+    sprite_fetch_addr: [u16;8],
+    sprite_fetch_valid: [bool;8],
     secondary: [u8; 32],
     indices: [u8; 8],
     eval_n: u8,
@@ -97,6 +99,8 @@ impl Ppu {
             next: [Sprite::default(); 8],
             count: 0,
             next_count: 0,
+            sprite_fetch_addr: [0;8],
+            sprite_fetch_valid: [false;8],
             secondary: [255; 32],
             indices: [255; 8],
             eval_n: 0,
@@ -605,7 +609,12 @@ impl Ppu {
             }
             if (260..=319).contains(&d) && d & 7 == 4 {
                 let i = ((d - 260) / 8) as usize;
-                c.address(self.sprite_address(i), self.ticks)
+                let a = self.sprite_address(i);
+                let y = if self.scan == 261 {255} else {self.scan as u8};
+                let row = y.wrapping_sub(self.secondary[i*4]);
+                self.sprite_fetch_addr[i] = a;
+                self.sprite_fetch_valid[i] = row < if self.ctrl & 32 != 0 {16} else {8};
+                c.address(a, self.ticks)
             }
             if (257..=320).contains(&d) {
                 self.oam_addr = 0;
@@ -619,8 +628,9 @@ impl Ppu {
                 match p {
                     0 | 2 => { self.read_fetch(c, 0x2000 | (self.v & 0xfff)); }
                     4 => {
-                        let a = self.sprite_address(i);
+                        let a = self.sprite_fetch_addr[i];
                         let lo = self.read_fetch(c, a);
+                        let lo = if self.sprite_fetch_valid[i] {lo} else {0};
                         self.next[i] =
                             Sprite {
                                 x: self.secondary[i * 4 + 3],
@@ -633,8 +643,9 @@ impl Ppu {
                             };
                     }
                     6 => {
-                        let a = self.sprite_address(i) + 8;
+                        let a = self.sprite_fetch_addr[i] + 8;
                         let hi = self.read_fetch(c, a);
+                        let hi = if self.sprite_fetch_valid[i] {hi} else {0};
                         self.next[i].hi =
                             if self.next[i].attr & 64 != 0 {
                                 hi.reverse_bits()
@@ -682,6 +693,26 @@ impl Ppu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sprite_pattern_address_and_range_are_latched_before_both_bitplanes() {
+        for tall in [false,true] {
+            let mut rom = vec![0;16+16384+8192];
+            rom[..4].copy_from_slice(b"NES\x1a"); rom[4]=1; rom[5]=1;
+            for a in [1,17,25] { rom[16+16384+a]=255; }
+            let mut c = Cart::load(&rom).unwrap();
+            let mut p = Ppu::new();
+            p.scan=161; p.dot=260; p.mask=30; p.render_history=15;
+            p.ctrl=if tall {32} else {0}; p.next_count=1;
+            p.secondary[..4].copy_from_slice(&[152,0,0,96]);
+            p.pal.fill(1); p.pal[17]=17; p.pal[19]=42;
+            p.tick(&mut c);
+            p.write_reg(&mut c,0,if tall {0} else {32},77949);
+            while p.scan==161 || p.dot<105 { p.tick(&mut c); }
+            assert_eq!(&p.fb[162*256+96..162*256+104],
+                &[if tall {42} else {1};8]);
+        }
+    }
 
     #[test]
     fn enabling_background_after_its_low_fetch_exposes_the_shift_fill_bits() {
