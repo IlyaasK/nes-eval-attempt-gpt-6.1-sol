@@ -288,7 +288,10 @@ impl Cart {
         let high = a & 0x1000 != 0;
         if !high {
             if self.a12 { self.low_since = dot }
-        } else if !self.a12 && dot.saturating_sub(self.low_since) >= 8 {
+        // Rapid $2000 table switching can produce an eight-dot low
+        // interval; the reference rejects it. Nine dots qualifies, which
+        // also preserves the odd pre-render line's first background edge.
+        } else if !self.a12 && dot.saturating_sub(self.low_since) >= 9 {
             if self.irq_counter == 0 || self.irq_reload {
                 self.irq_counter = self.irq_latch
             } else { self.irq_counter -= 1 }
@@ -466,6 +469,23 @@ mod tests {
         serial(&mut c, 0xe000, 2, &mut cycle);
         assert_eq!(c.read(0x8000, 0), 4);
         assert_eq!(c.read(0x6000, 0), 37);
+    }
+    #[test]
+    fn mmc3_a12_rejects_eight_low_dots_but_accepts_nine() {
+        let mut c = Cart::load(&image(4,2,1)).unwrap();
+        c.write(0xe001,0,0);
+        c.address(0x1000,8);
+        assert!(!c.irq);
+        c.address(0x2000,9);
+        c.address(0x1000,17);
+        assert!(!c.irq);
+        c.address(0x2000,18);
+        c.address(0x1000,27);
+        assert!(c.irq);
+        c.write(0xe000,0,28);
+        c.write(0xe001,0,29);
+        c.address(0x1000,100);
+        assert!(!c.irq); // Remaining high never creates another edge.
     }
     #[test]
     fn mmc3_prg_swap_chr_inversion_and_protected_ram() {

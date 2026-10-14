@@ -927,3 +927,52 @@ conditional SWITCH_CTRL addedoriginalIRQmarkerfixture. Currentnativecopied
 .out/run-frame-clock-overlap (stabletraceOFF). AcceptedprodAPUallthreefixes;
 noexperimentalDSP. Broad5000games alreadyall20kimagesexactbeforeoverlap,
 withsameaudioRMSastable4. Overlaprare butfullgamerecheckafterguard stilldue.
+
+## Dynamic MMC3 background table switching: nine-dot A12 qualification
+
+48 original CTRLbit4switching IRQmarker configs: fixedspritebank CTRL0/8/32/40,
+LATCH0/1/8, loopNOPpadding0..3. Original20/48 fail; worstRMS~6795peak~22979.
+AllCTRL0cases pass butspriteupperbank/tallvariants exposea12count differences.
+TriallatchedBGpatternaddresses (data5/7 address6/8 useslatchedCTRL) madeALL48
+fail, soREVERTEDtofreshcurrentCTRL atpindot6/8. BackupacceptedPPU
+.out/ppu-before-latched-bg-pins.rs. All48failedtrial in
+.out/mmc3-switch-ctrl/latched-results.json; doNOTadoptlatchedpinlogic.
+
+Changing Cart A12 qualification >=8 to>=9 fixesALL48 (samplecountsexact;
+nopeak>5), .out/mmc3-switch-ctrl/nine-results.json. Eight-dotlowintervals from
+rapidpatternlow/high tablechanges are rejected; nine-dot qualifies odd
+pre-render339skip-to-visibleBG6 afterNT337. Unitaddedbounds8vs9andno-repeated-
+high-edge behavior. 46units/ABI/wasmbuild inprogress. Requiredwasm before
+thisbuild stillacceptedAPU+oldA12>=8; sourceCart>=9 nowvalidating against
+staticlayouts andstrictnative-timestamporacle DACreplay beforefinaladoption.
+SourcePPU isRESTOREDacceptedcurrentCTRL (gitHEADcheckpointbrieflycapturedtrial,
+so gitdiffcanappearreversal; actualfile matches backup). Currentdefaultnative
+.out/run-a12-nine-trial copiedbeforetracebuild; tracebuildcurrentlyrunning.
+
+Afteroverlapframeguard, all30diagnostics images/counts exactagain, maxRMS
+.025014peak1. 32more originalheldoutAPUstreams seed200..231,1200events each,
+allRMS<=.2641peak<=2,no largeerrors. tools/apu_random_probe.py nowreserves
+1290clockgap beforefirstwrite>10000 forreplaybuilder'szeroPage lookupinit;
+withoutreservationseed206 couldnotsatisfytimestamps (fixturebug fixed).
+
+## Nine-dot qualification accepted: strict IRQ timestamp replay exact
+
+All48dynamicCTRLswitching cases matchafter>=9qualification. Four strict
+native-timestamp DAC-onlyoracle replays beforeCPU120000: c0-l8-p0 300markers,
+c8-l8-p0 280, c32-l1-p2 665, c40-l0-p0 981; allprefixPCMbyte-exactoracle vs
+originaloracle (RMS0/peak0), .out/mmc3-switch-ctrl/strict-nine-markers.json.
+All8staticCTRL0/8/16/24/32/40/48/56 originalmarkerconfigs also samplecountsexact
+at30calls, RMS<=.3595peak1. Earliercomparisonmistakenlyran60callsagainst30-
+call WAV; corrected .out/mmc3-static-nine-results.json. 46units+ABI pass,
+wasmrebuiltwithCart>=9; thisisnowACCEPTEDprod. BackgroundpindotusescurrentCTRL
+asbefore, latchedBGtrialreverted. Currentnative defaulttraceOFF afterlatest
+build, stable .out/run-a12-nine-trial, trace .out/run-trace-a12-nine.
+
+NextAPUoriginalseededstreams now includeDMCvia--dmc: plannedCPUprogramwrites
+are delayedbyrealDMA identicallyinbothmachines; generator'stimestamps are
+NOTactual CPUcycle timestamps withDMC (native trace neededforinference).
+Samplebytes areordinaryNROMprogramROM; rates/DAC/sampleaddr/length andstart/
+stop/loop/IRQ allvaried, pulse/tri/noisesoundingtoo. Initial16seeds inprogress.
+No productionDMAchanges. 32heldoutnon-DMCstreams allpeak<=2maxRMS.2641after
+quarter/halfoverlapfix. Full30diagnosticsafter>=9MMC3stilldue, andbroad5000
+gamesafteroverlapguarddue (beforeguardcurrenttable4+tri fixes alreadyexact).
