@@ -137,6 +137,9 @@ impl Ppu {
     fn read_fetch(&mut self, c: &mut Cart, a: u16) -> u8 {
         if c.mapper != 1 { return self.read_mem(c, a); }
         let a = a & 0x3fff;
+        // MMC1 expansion outputs follow the completed rendering fetch one
+        // dot later. CPU register accesses and end-of-line garbage fetches
+        // use read_mem and update the pins immediately.
         self.cart_addr_pending = Some(a);
         match a {
             0..=0x1fff => c.chr_read(a),
@@ -626,6 +629,44 @@ mod tests {
         assert!(!cart.irq);
         ppu.tick(&mut cart);
         assert!(cart.irq);
+    }
+    #[test]
+    fn mmc1_ram_pins_delay_normal_fetches_but_not_end_of_line_fetches() {
+        let mut rom = vec![0; 16 + 65536];
+        rom[..4].copy_from_slice(b"NES\x1a");
+        rom[4] = 4;
+        rom[6] = 0x10;
+        rom[7] = 8;
+        rom[10] = 8;
+        let mut cart = Cart::load(&rom).unwrap();
+        let mut cycle = 0;
+        for (addr, value) in [(0x8000, 28), (0xa000, 0), (0xc000, 8)] {
+            for bit in 0..5 {
+                cart.write(addr, (value >> bit) & 1, cycle);
+                cycle += 2;
+            }
+        }
+        cart.address(0, 0);
+        cart.write(0x6000, 17, cycle);
+        cart.address(0x1000, 1);
+        cart.write(0x6000, 34, cycle);
+        cart.address(0, 2);
+        let mut ppu = Ppu::new();
+        ppu.scan = 5;
+        ppu.dot = 1;
+        ppu.ticks = 100;
+        ppu.ctrl = 16;
+        ppu.mask = 8;
+        while ppu.dot <= 6 { ppu.tick(&mut cart); }
+        assert_eq!(cart.read(0x6000, 0), 34);
+        while ppu.dot <= 9 { ppu.tick(&mut cart); }
+        assert_eq!(cart.read(0x6000, 0), 34);
+        ppu.tick(&mut cart);
+        assert_eq!(cart.read(0x6000, 0), 17);
+        while ppu.dot <= 336 { ppu.tick(&mut cart); }
+        assert_eq!(cart.read(0x6000, 0), 34);
+        ppu.tick(&mut cart);
+        assert_eq!(cart.read(0x6000, 0), 17);
     }
 
     #[test]
