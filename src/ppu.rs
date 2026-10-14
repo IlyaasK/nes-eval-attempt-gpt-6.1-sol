@@ -53,6 +53,7 @@ pub struct Ppu {
     next_count: usize,
     sprite_fetch_addr: [u16;8],
     sprite_fetch_valid: [bool;8],
+    sprite_fetched: bool,
     secondary: [u8; 32],
     secondary_cpu: [u8; 32],
     indices: [u8; 8],
@@ -118,6 +119,7 @@ impl Ppu {
             next_count: 0,
             sprite_fetch_addr: [0;8],
             sprite_fetch_valid: [false;8],
+            sprite_fetched: false,
             secondary: [255; 32],
             secondary_cpu: [255; 32],
             indices: [255; 8],
@@ -608,6 +610,7 @@ impl Ppu {
         }
         if let Some(a) = self.cart_addr_pending.take() { c.address(a, self.ticks); }
         let d = self.dot;
+        if d==257 {self.sprite_fetched=false;}
         if d==1 {
             self.post_eval_valid=false;
         }
@@ -738,6 +741,7 @@ impl Ppu {
                 match p {
                     0 | 2 => { self.read_fetch(c, 0x2000 | (self.v & 0xfff)); }
                     4 => {
+                        self.sprite_fetched = true;
                         let a = self.sprite_fetch_addr[i];
                         let lo = self.read_fetch(c, a);
                         let lo = if self.sprite_fetch_valid[i] {lo} else {0};
@@ -753,6 +757,7 @@ impl Ppu {
                             };
                     }
                     6 => {
+                        self.sprite_fetched = true;
                         let a = self.sprite_fetch_addr[i] + 8;
                         let hi = self.read_fetch(c, a);
                         let hi = if self.sprite_fetch_valid[i] {hi} else {0};
@@ -819,13 +824,17 @@ impl Ppu {
             self.dot = 0;
             self.scan = 0;
             self.frame += 1;
-            self.sprites = self.next;
-            self.count = self.next_count.min(8);
+            if self.sprite_fetched {
+                self.sprites = self.next;
+                self.count = self.next_count.min(8);
+            }
         } else if d == 340 {
             self.dot = 0;
             self.scan += 1;
-            self.sprites = self.next;
-            self.count = self.next_count.min(8);
+            if self.sprite_fetched {
+                self.sprites = self.next;
+                self.count = self.next_count.min(8);
+            }
             if self.scan == 262 { self.scan = 0; self.frame += 1; }
         } else { self.dot += 1 }
     }
