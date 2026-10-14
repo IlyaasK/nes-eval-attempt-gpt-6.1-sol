@@ -1,0 +1,208 @@
+{
+  "candidate": "nes_emu",
+  "candidate_sha256": "97d5c60ea5d260531e1576fdb325747d6f822063fee92354016b73779c947df8",
+  "per_testcase": {
+    "apu-dmc-basics": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999999956858,
+      "section": "procedural",
+      "subsystem": "apu"
+    },
+    "apu-irq-flag": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999999962239,
+      "section": "procedural",
+      "subsystem": "apu"
+    },
+    "apu-len-ctr": {
+      "video_score": 1.0,
+      "audio_score": 0.999999999996225,
+      "section": "procedural",
+      "subsystem": "apu"
+    },
+    "apu-mixer-dmc": {
+      "video_score": 1.0,
+      "audio_score": 0.9999903034367689,
+      "section": "procedural",
+      "subsystem": "apu"
+    },
+    "apu-mixer-noise": {
+      "video_score": 1.0,
+      "audio_score": 0.9999984503422918,
+      "section": "procedural",
+      "subsystem": "apu"
+    },
+    "apu-mixer-square": {
+      "video_score": 1.0,
+      "audio_score": 0.9999997051444957,
+      "section": "procedural",
+      "subsystem": "apu"
+    },
+    "apu-mixer-triangle": {
+      "video_score": 1.0,
+      "audio_score": 0.9992031231260053,
+      "section": "procedural",
+      "subsystem": "apu"
+    },
+    "concentration-room-gameplay": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999999970218,
+      "section": "replay",
+      "subsystem": "gameplay"
+    },
+    "cpu-timing": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999999997319,
+      "section": "procedural",
+      "subsystem": "cpu"
+    },
+    "double-action-blaster-guys-gameplay": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999999373824,
+      "section": "replay",
+      "subsystem": "gameplay"
+    },
+    "falling-gameplay": {
+      "video_score": 0.9999965560629201,
+      "audio_score": 0.9999982949852416,
+      "section": "replay",
+      "subsystem": "gameplay"
+    },
+    "holy-mapperel-cnrom": {
+      "video_score": 1.0,
+      "audio_score": 0.9999994955735686,
+      "section": "procedural",
+      "subsystem": "mapper"
+    },
+    "holy-mapperel-mmc1": {
+      "video_score": 1.0,
+      "audio_score": 0.9999829544079367,
+      "section": "procedural",
+      "subsystem": "mapper"
+    },
+    "holy-mapperel-mmc3": {
+      "video_score": 1.0,
+      "audio_score": 0.9999733128314393,
+      "section": "procedural",
+      "subsystem": "mapper"
+    },
+    "holy-mapperel-uxrom": {
+      "video_score": 1.0,
+      "audio_score": 0.9999908778290223,
+      "section": "procedural",
+      "subsystem": "mapper"
+    },
+    "instr-misc": {
+      "video_score": 1.0,
+      "audio_score": 0.999999999998211,
+      "section": "procedural",
+      "subsystem": "cpu"
+    },
+    "instr-official": {
+      "video_score": 1.0,
+      "audio_score": 0.999999999998211,
+      "section": "procedural",
+      "subsystem": "cpu"
+    },
+    "minekart-madness-gameplay": {
+      "video_score": 1.0,
+      "audio_score": 0.9999994091741417,
+      "section": "replay",
+      "subsystem": "gameplay"
+    },
+    "mmc3-clocking": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999999961696,
+      "section": "procedural",
+      "subsystem": "mapper"
+    },
+    "nestest": {
+      "video_score": 1.0,
+      "audio_score": 0.9999993238311724,
+      "section": "procedural",
+      "subsystem": "cpu"
+    },
+    "nmi-and-brk": {
+      "video_score": 6.014768737277243e-11,
+      "audio_score": 0.059538837203808204,
+      "section": "procedural",
+      "subsystem": "cpu"
+    },
+    "nmi-timing": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999999966304,
+      "section": "procedural",
+      "subsystem": "ppu"
+    },
+    "nova-the-squirrel-gameplay": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999995233443,
+      "section": "replay",
+      "subsystem": "gameplay"
+    },
+    "oam-read": {
+      "video_score": 1.0,
+      "audio_score": 0.999999999998211,
+      "section": "procedural",
+      "subsystem": "ppu"
+    },
+    "sprite-overflow": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999999995884,
+      "section": "procedural",
+      "subsystem": "ppu"
+    },
+    "sprite0-basics": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999999997142,
+      "section": "procedural",
+      "subsystem": "ppu"
+    },
+    "sprite0-timing": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999999996838,
+      "section": "procedural",
+      "subsystem": "ppu"
+    },
+    "thwaite-gameplay": {
+      "video_score": 1.0,
+      "audio_score": 0.999999997551522,
+      "section": "replay",
+      "subsystem": "gameplay"
+    },
+    "vbl-basics": {
+      "video_score": 1.0,
+      "audio_score": 0.9999999999969275,
+      "section": "procedural",
+      "subsystem": "ppu"
+    }
+  },
+  "sections": {
+    "audio": {
+      "score": 0.9998987561869164,
+      "weight": 0.2,
+      "subsystems": {
+        "apu": 0.9997978955123904,
+        "game_audio": 0.9999996168614422
+      }
+    },
+    "procedural": {
+      "score": 0.9300000000042103,
+      "weight": 0.2,
+      "subsystems": {
+        "apu": 1.0,
+        "cpu": 0.8000000000120295,
+        "mapper": 1.0,
+        "ppu": 1.0
+      }
+    },
+    "replay": {
+      "score": 0.9999994260104866,
+      "weight": 0.6,
+      "subsystems": {
+        "gameplay": 0.9999994260104866
+      }
+    }
+  },
+  "overall": 0.9859794068445173
+}
