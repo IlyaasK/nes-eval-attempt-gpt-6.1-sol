@@ -1378,3 +1378,32 @@ slot vsparallelread. /tmp/dmc_oam_copied_bytes.py buildsCHRROMtilesencoding
 all256OAMbytes, sourcepage80(nonzeroROM), captures2004intoNTafterDMA. Controls
 636/640 vsabortedfeedback638. Job81193 running .out/dmc-oam-copied-bytes.
 Currentsource55acceptedunchanged whileinvestigating thisnew56corner.
+
+## Corrected56 overlap model: FULL DMC DMA, NOT parallel/no-stall
+
+Previous'no-stall' claim wasWRONG: marker33000+517=33517 is HBLANK(row32dot298),
+so+2clks hidden atedge. New18loop-body callbacks (JMP3/NOP2+JMP3/BIT3+JMP3/
+BRK7) fitglobalCPUphase+2exactly (BRK ref15nextpixels vsnative9 proves+2,
+JMP ref3vsnative6 is+2mod3). Thus abortedpulsewhileOAMactive schedulesFULL
+DMC HALT809,DUMMY810(overlapsOAMget77),ALIGN811(overlapsPUT77),GET812steals
+OAMget78=>2extraclks. Firstaffectedfloat-OAMbyte78 receives5A, matchingprobe.
+Noresidualdummy fornextOAM; bothold n1'dummy next' andreal+2current endmarker
+happen tomatchbecauseHBLANK firstmaskededge. Normalfullarbiterlogicisright.
+
+SourceCPU current56TRIAL restoredaccepted55 thenadded ONLY conditional:
+aborted_reload&&oam_active&&!dmc_active ->normalDMC Dummy stage/forced, mark
+startedthisclock. NOparallelfields/helpers/noextra nextdummy. Updated56unit
+assertGET812,OAMends1169(+2),floatbytes0..77=40,78..255=5A,nextOAMraw1200
+normal513ends1713/noextraGET. ALL56unitspass. .out/run-abort-oam-full-get-trial.
+ALL20originalimplicit-active-OAM cases NOWall8framesexact ANDaudiopeak1
+(.out/dmc-abort-during-oam/fullget-results.json). RequiredWASM STILL55.
+Needold184audio/215sideeffects andbroadvalidationbeforeadopt56.
+
+PPU experiment: clipselectedspriteifheightdrops16->8afterevaluation before
+lowdatafetch. ImprovesALL16PPUrandomstreams totals, but12targeted switch
+cases showT77949(dot263 betweenlo261/hi263) regressed8px. Rangevaliditymust
+be cachedatLOWfetch, then reusedhi; currenttrial checkedfreshheightonHI.
+Saved .out/ppu-range-trial.rs / run-sprite-range-trial. SourcePPU RESTORED54
+whileDMA56isolated. Furtherhighaddress probe CHR[9]=0[25]=FF atswitch263 tests
+whetherHIaddress also cachedfromLO, resultsjob19276/.out/sprite-high-address.
+PPUDATAphase16gridfreshpatternedROM ALLexact (noincrementdelayneeded).

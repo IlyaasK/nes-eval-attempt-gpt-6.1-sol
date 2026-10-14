@@ -171,9 +171,6 @@ pub struct Bus {
     oam_latch: u8,
     oam_have_data: bool,
     dmc_aborted_get: bool,
-    dmc_parallel_get: bool,
-    dmc_aborted_dummy: bool,
-    oam_dummy_left: u8,
     dmc_pending_at: Option<u64>,
     dmc_stage: Option<DmcDmaStage>,
     last_dmc_get: Option<u64>,
@@ -210,9 +207,6 @@ impl Bus {
             oam_latch: 0,
             oam_have_data: false,
             dmc_aborted_get: false,
-            dmc_parallel_get: false,
-            dmc_aborted_dummy: false,
-            oam_dummy_left: 0,
             dmc_pending_at: None,
             dmc_stage: None,
             last_dmc_get: None,
@@ -252,8 +246,6 @@ impl Bus {
                 self.oam_page = page;
                 self.oam_index = 0;
                 self.oam_have_data = false;
-                self.oam_dummy_left = if self.dmc_aborted_dummy {2} else {0};
-                self.dmc_aborted_dummy = false;
                 // An aborted reload can retain its get after the CPU
                 // resumes. OAM arbitration exposes that read, stealing
                 // its first get slot and filling the sample buffer.
@@ -271,8 +263,6 @@ impl Bus {
                 && self.dmc_pending_at.is_some_and(|t| t <= next_cycle) {
                 self.dmc_pending_at = None;
                 self.dmc_aborted_get = false;
-                self.dmc_parallel_get = false;
-                self.dmc_aborted_dummy = false;
                 self.dmc_active = true;
                 self.dmc_stage = Some(DmcDmaStage::Dummy);
                 dmc_started = true;
@@ -285,8 +275,15 @@ impl Bus {
         if dmc_started {
             eprintln!("DMC_HALT {} {:04x}", self.cycles, self.dma_halt_addr);
         }
-        if aborted_reload && self.oam_active && !self.dmc_active && !oam_started {
-            self.dmc_parallel_get = true;
+        if aborted_reload && self.oam_active && !self.dmc_active {
+            // OAM already holds the CPU: the cancelled reload completes
+            // its dummy/alignment/get stages alongside the sprite copy.
+            self.dmc_aborted_get = false;
+            self.dmc_pending_at = None;
+            self.dmc_active = true;
+            self.dmc_stage = Some(DmcDmaStage::Dummy);
+            self.dmc_forced = true;
+            dmc_started = true;
         }
         self.last_dma_cycle = self.oam_active || self.dmc_active;
         if aborted_reload && cpu_read && !self.last_dma_cycle {
@@ -306,10 +303,7 @@ impl Bus {
             let action = if dmc_get {
                 DmaAction::DmcGet(self.apu.dmc_addr)
             } else if self.oam_active && !oam_started {
-                if self.oam_dummy_left != 0 {
-                    self.oam_dummy_left -= 1;
-                    DmaAction::Hold
-                } else if get_cycle && !self.oam_have_data {
+                if get_cycle && !self.oam_have_data {
                     DmaAction::OamGet((self.oam_page as u16) << 8 | self.oam_index)
                 } else if !get_cycle && self.oam_have_data {
                     DmaAction::OamPut(self.oam_latch)
@@ -336,12 +330,22 @@ impl Bus {
                     self.oam_index += 1;
                     if self.oam_index == 256 { self.oam_active = false; }
                 }
-                DmaAction::DmcGet(a) => self.read_dmc_sample(a),
-            }
-            if self.dmc_parallel_get && get_cycle && !dmc_get {
-                self.dmc_parallel_get = false;
-                self.read_dmc_sample(self.apu.dmc_addr);
-                self.dmc_aborted_dummy = true;
+                DmaAction::DmcGet(a) => {
+                    self.dmc_open_before_get = self.open;
+                    let v = self.raw_dma_read(a);
+                    self.last_dmc_get = Some(self.cycles);
+                    self.dmc_register_selector = Some(self.dmc_open_before_get);
+                    #[cfg(feature="trace")]
+                    eprintln!("DMC_GET {} {:04x} {:04x} {}", self.cycles,
+                        a, self.dma_halt_addr, v);
+                    self.apu.dmc_supply(v);
+                    if self.apu.dmc_need() {
+                        self.dmc_pending_at = Some(self.cycles + 1);
+                    }
+                    self.dmc_active = false;
+                    self.dmc_forced = false;
+                    self.dmc_stage = None;
+                }
             }
             if !dmc_started && matches!(self.dmc_stage, Some(DmcDmaStage::Dummy)) {
                 self.dmc_stage = Some(DmcDmaStage::Get);
@@ -371,22 +375,6 @@ impl Bus {
         };
         self.result = Some(value);
         true
-    }
-    fn read_dmc_sample(&mut self,a:u16) {
-        self.dmc_open_before_get = self.open;
-        let v = self.raw_dma_read(a);
-        self.last_dmc_get = Some(self.cycles);
-        self.dmc_register_selector = Some(self.dmc_open_before_get);
-        #[cfg(feature="trace")]
-        eprintln!("DMC_GET {} {:04x} {:04x} {}", self.cycles,
-            a, self.dma_halt_addr, v);
-        self.apu.dmc_supply(v);
-        if self.apu.dmc_need() {
-            self.dmc_pending_at = Some(self.cycles + 1);
-        }
-        self.dmc_active = false;
-        self.dmc_forced = false;
-        self.dmc_stage = None;
     }
     fn tick(&mut self) {
         self.last_irq =
@@ -1180,6 +1168,43 @@ mod dmc_dma_tests {
         rom[16 + 0x4800..16 + 0x4811].fill(255);
         rom[16 + 32764..16 + 32766].copy_from_slice(&0x8000u16.to_le_bytes());
         (Nes::new(Cart::load(&rom).unwrap()), end)
+    }
+
+    #[test]
+    fn a_reload_aborted_during_oam_completes_its_get_and_extends_the_copy() {
+        let mut code = vec![0x78,0xa9,0x40,0x8d,0x17,0x40,
+            0xa9,15,0x8d,0x10,0x40,0xa9,64,0x8d,0x11,0x40,
+            0xa9,32,0x8d,0x12,0x40,0xa9,0,0x8d,0x13,0x40,
+            0xa2,117,0xca,0xd0,0xfd,0xea,0xea,0xea,
+            0xa9,16,0x8d,0x15,0x40,0xea,0xea,0xea,
+            0xa9,64,0x8d,0x14,0x40];
+        let end = 0x8000+code.len() as u16;
+        code.extend_from_slice(&[0x4c,end as u8,(end>>8) as u8]);
+        let mut rom = vec![0;16+32768];
+        rom[..4].copy_from_slice(b"NES\x1a"); rom[4] = 2;
+        rom[16..16+code.len()].copy_from_slice(&code);
+        rom[16+0x4800..16+0x4804].copy_from_slice(&[0xa5,0x5a,0x3c,0xc3]);
+        rom[16+32764..16+32766].copy_from_slice(&0x8000u16.to_le_bytes());
+        let mut nes = Nes::new(Cart::load(&rom).unwrap());
+        while nes.bus.borrow().cycles < 1169 { nes.clock(); }
+        {
+            let b = nes.bus.borrow();
+            assert!(!b.oam_active);
+            assert_eq!(b.last_dmc_get,Some(812));
+            assert_eq!(b.apu.dmc_addr,0xc802);
+            assert_eq!(b.apu.dmc_left,0);
+            assert_eq!(&b.ppu.oam[..78], &[64;78]);
+            assert_eq!(&b.ppu.oam[78..], &[90;178]);
+            assert!(!b.dmc_aborted_get);
+        }
+        while nes.bus.borrow().cycles < 1200 { nes.clock(); }
+        nes.bus.borrow_mut().raw_write(0x4014,2);
+        nes.clock();
+        while nes.bus.borrow().oam_active { nes.clock(); }
+        assert_eq!(nes.bus.borrow().cycles,1713);
+        assert_eq!(nes.bus.borrow().last_dmc_get,Some(812));
+        assert_eq!(nes.bus.borrow().apu.dmc_addr,0xc802);
+        assert!(!nes.bus.borrow().dmc_aborted_get);
     }
 
     #[test]
