@@ -6,6 +6,12 @@ struct Sprite {
     hi: u8,
     index: u8,
 }
+#[derive(Clone, Copy)]
+struct OamEvaluation {
+    n: u8, m: u8, pos: usize, latch: u8, value: u8, done: bool,
+    post_valid: bool, post_n: u8, post_latch: u8, overflow_left: u8,
+    addr: u8, indices: [u8; 8], secondary: [u8; 32], cpu: [u8; 32],
+}
 pub struct Ppu {
     pub fb: Vec<u16>,
     pub scan: u16,
@@ -63,9 +69,10 @@ pub struct Ppu {
     eval_latch: u8,
     eval_value: u8,
     eval_done: bool,
-    eval_initialized: bool,
+    eval_line_started: bool,
+    resumed_dot1: bool,
     clear_active: bool,
-    late_count: Option<usize>,
+    late_bus: Option<OamEvaluation>,
     post_eval_valid: bool,
     post_eval_n: u8,
     post_eval_latch: u8,
@@ -132,9 +139,10 @@ impl Ppu {
             eval_latch: 0,
             eval_value: 0,
             eval_done: false,
-            eval_initialized: false,
+            eval_line_started: false,
+            resumed_dot1: false,
             clear_active: false,
-            late_count: None,
+            late_bus: None,
             post_eval_valid: false,
             post_eval_n: 0,
             post_eval_latch: 0,
@@ -261,7 +269,9 @@ impl Ppu {
             }
             4 => {
                 let v =
-                    if self.rendering_line() && self.dot>=322 {
+                    if self.rendering_line() && self.late_oam_read().is_some() {
+                        self.late_oam_read().unwrap()
+                    } else if self.rendering_line() && self.dot>=322 {
                         self.secondary_cpu[0]
                     } else
                     if self.rendering_line() && self.dot >= 2 && self.dot <= 64
@@ -389,7 +399,6 @@ impl Ppu {
             (self.athi & 0xff00) | if self.attr & 2 != 0 { 255 } else { 0 }
     }
     fn initialize_evaluation(&mut self) {
-        self.eval_initialized=true;
         self.eval_pos=0;
         self.eval_n=self.oam_addr>>2;
         self.eval_m=self.oam_addr&3;
@@ -397,15 +406,67 @@ impl Ppu {
         self.overflow_left=0;
         self.indices=[255;8];
     }
+    fn save_evaluation(&self) -> OamEvaluation {
+        OamEvaluation {n:self.eval_n,m:self.eval_m,pos:self.eval_pos,
+            latch:self.eval_latch,value:self.eval_value,done:self.eval_done,
+            post_valid:self.post_eval_valid,post_n:self.post_eval_n,
+            post_latch:self.post_eval_latch,overflow_left:self.overflow_left,
+            addr:self.oam_addr,indices:self.indices,secondary:self.secondary,
+            cpu:self.secondary_cpu}
+    }
+    fn restore_evaluation(&mut self, e: OamEvaluation) {
+        self.eval_n=e.n;self.eval_m=e.m;self.eval_pos=e.pos;
+        self.eval_latch=e.latch;self.eval_value=e.value;self.eval_done=e.done;
+        self.post_eval_valid=e.post_valid;self.post_eval_n=e.post_n;
+        self.post_eval_latch=e.post_latch;self.overflow_left=e.overflow_left;
+        self.oam_addr=e.addr;self.indices=e.indices;self.secondary=e.secondary;
+        self.secondary_cpu=e.cpu;
+    }
     fn evaluate(&mut self) {
-        let d=self.dot;
-        if self.scan<240 && d>=65 && !self.eval_initialized {
-            let old_count=self.count;
+        // A late start resumes the CPU-visible OAM bus. The sprite state
+        // selected at the beginning of the line remains cached separately.
+        if self.dot<=64 {self.clear_active=true;}
+        if self.scan<240 && self.dot>=65 && !self.eval_line_started && self.late_bus.is_none() {
+            let rendered=self.save_evaluation();
             self.initialize_evaluation();
-            self.late_count=Some(old_count);
+            self.late_bus=Some(self.save_evaluation());
+            self.restore_evaluation(rendered);
         }
+        if self.scan>=240 || self.dot<65 || !self.resumed_dot1 {
+            self.evaluate_core();
+        }
+        if self.scan<240 && self.dot>=65 {
+            if let Some(bus)=self.late_bus {
+                let rendered=self.save_evaluation();
+                let status=self.status;
+                self.restore_evaluation(bus);
+                self.evaluate_core();
+                let mut next=self.save_evaluation();
+                if !self.clear_active {next.secondary=bus.secondary;next.cpu=bus.cpu;}
+                self.restore_evaluation(rendered);
+                self.status=status;
+                self.late_bus=Some(next);
+            }
+        }
+    }
+    fn late_oam_read(&self) -> Option<u8> {
+        let bus=self.late_bus?;
+        if self.scan>=240 {return None}
+        match self.dot {
+            66..=257 => Some(if bus.post_valid {bus.post_latch} else {bus.latch}),
+            258..=321 => {
+                let d=self.dot-1;
+                Some(bus.cpu[((d-257)/8) as usize*4+((d-257)&7).min(3) as usize])
+            }
+            322..=340 => Some(bus.cpu[0]),
+            0 if self.scan!=0 => Some(bus.cpu[0]),
+            _ => None,
+        }
+    }
+    fn evaluate_core(&mut self) {
+        let d=self.dot;
+        if d==1 {self.initialize_evaluation();}
         if d <= 64 {
-            self.clear_active=true;
             if d & 1 == 0 {
                 self.secondary[(d / 2 - 1) as usize] = 255;
                 self.secondary_cpu[(d / 2 - 1) as usize] = 255;
@@ -455,10 +516,8 @@ impl Ppu {
             if self.eval_pos&3 == 0 {
                 // Y is written before the range test. A rejected sprite
                 // leaves its Y in the next otherwise empty secondary slot.
-                if self.late_count.is_none() || self.clear_active {
-                    self.secondary[self.eval_pos]=self.eval_value;
-                    self.secondary_cpu[self.eval_pos]=self.eval_latch;
-                }
+                self.secondary[self.eval_pos]=self.eval_value;
+                self.secondary_cpu[self.eval_pos]=self.eval_latch;
                 if in_range {
                     self.indices[self.eval_pos / 4] = self.eval_n;
                     self.eval_pos += 1;
@@ -469,10 +528,8 @@ impl Ppu {
                     self.eval_m=0;
                 }
             } else {
-                if self.late_count.is_none() || self.clear_active {
-                    self.secondary[self.eval_pos] = self.eval_value;
-                    self.secondary_cpu[self.eval_pos] = self.eval_latch;
-                }
+                self.secondary[self.eval_pos] = self.eval_value;
+                self.secondary_cpu[self.eval_pos] = self.eval_latch;
                 self.eval_pos += 1;
                 self.eval_m += 1;
                 if self.eval_m == 4 {
@@ -565,7 +622,7 @@ impl Ppu {
         // The reference latches the next line's sprite count for the final
         // pixel, while its shift registers still contain the current line.
         let visible_count = if x == 255 {
-            self.count.min(self.late_count.unwrap_or(self.eval_pos / 4))
+            self.count.min(self.eval_pos / 4)
         } else { self.count };
         for s in &self.sprites[..visible_count] {
             if s.x == 0 {
@@ -628,8 +685,9 @@ impl Ppu {
         let d = self.dot;
         if d==257 {self.sprite_fetched=false;}
         if d==1 {
-            self.eval_initialized=false;self.clear_active=false;self.late_count=None;
-            if self.render_history&1!=0 {self.initialize_evaluation();}
+            self.eval_line_started=self.render_history&1!=0;
+            self.resumed_dot1=self.rendering() && !self.eval_line_started;
+            self.clear_active=false;self.late_bus=None;
             self.post_eval_valid=false;
         }
         let just_enabled = std::mem::take(&mut self.render_just_enabled);
@@ -721,7 +779,7 @@ impl Ppu {
             if d == 257 {
                 self.load_shift();
                 self.next_count =
-                    if self.scan == 261 { 0 } else { self.late_count.unwrap_or(self.eval_pos / 4) };
+                    if self.scan == 261 { 0 } else { self.eval_pos / 4 };
                 self.next = [Sprite::default(); 8]
             }
             if (1..=256).contains(&d) { self.evaluate() }
@@ -890,6 +948,36 @@ mod tests {
         assert_eq!(p.read_reg(&mut c,4),231);
         p.write_reg(&mut c,1,0,50000);
         assert_eq!(p.read_reg(&mut c,4),200);
+    }
+
+    #[test]
+    fn late_rendering_advances_the_oam_read_bus_without_replacing_cached_sprites() {
+        let mut rom=vec![0;16+16384+8192];
+        rom[..4].copy_from_slice(b"NES\x1a");rom[4]=1;rom[5]=1;
+        rom[16+16384+170*16..16+16384+170*16+8].fill(255);
+        let mut c=Cart::load(&rom).unwrap();
+        for enable_dot in [61,85] {
+            let mut p=Ppu::new();
+            p.scan=160;p.dot=1;p.eval_done=true;p.pal[17]=21;
+            p.oam.fill(255);
+            p.oam[..8].copy_from_slice(&[200,160,170,16,161,200,200,160]);
+            while p.dot<61 {p.tick(&mut c);}
+            p.write_reg(&mut c,3,1,40000);
+            while p.dot<enable_dot {p.tick(&mut c);}
+            p.write_reg(&mut c,1,20,40000);
+            if enable_dot==61 {
+                while p.dot<68 {p.tick(&mut c);}
+                assert_eq!(p.read_reg(&mut c,4),162);
+            } else {
+                p.tick(&mut c);
+                assert_eq!(p.read_reg(&mut c,4),160);
+            }
+            while p.dot<259 {p.tick(&mut c);}
+            assert_eq!(p.read_reg(&mut c,4),if enable_dot==61 {162} else {255});
+            assert!(p.secondary.iter().all(|&v|v==255));
+            while p.scan==160 || p.dot<240 {p.tick(&mut c);}
+            assert!(p.fb[161*256..161*256+239].iter().all(|&v|v==0));
+        }
     }
 
     #[test]
