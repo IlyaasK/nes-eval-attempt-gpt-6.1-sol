@@ -29,9 +29,10 @@ attempt repositories (e.g.
 | 20 h | 0.9860 | 0.9300 | 1.0000 | 1.0000 |
 | **final** | **0.9860** | 0.9300 | 1.0000 | 1.0000 |
 
-**28 of the 29 testcases score at or above 0.999.** Every one of the six
-homebrew games replays frame-exactly: all 34,000 replayed frames match the
-reference pixel for pixel. Audio is exact.
+**28 of the 29 testcases score at or above 0.999.** Five of the six homebrew
+games replay identically to the reference, every pixel of every frame; in the
+sixth, Falling, 4 of 5,800 frames differ slightly and the replay still scores
+1.0000. Audio is exact.
 
 The one failure is `nmi-and-brk` (blargg's `cpu_interrupts_v2/2`, NMI
 hijacking a BRK), which scores 0.0: its output first differs at frame 110
